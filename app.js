@@ -7,15 +7,17 @@ const { BigNumber } = require('ethers');
 const fs = require("fs");
 
 // Environment variables
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const VOID_TELEGRAM_CHAT_ID = process.env.VOID_TELEGRAM_CHAT_ID;
+const VOID_TELEGRAM_BOT_TOKEN = process.env.VOID_TELEGRAM_BOT_TOKEN;
+const YANG_TELEGRAM_CHAT_ID = process.env.YANG_TELEGRAM_CHAT_ID;
+const YANG_TELEGRAM_BOT_TOKEN = process.env.YANG_TELEGRAM_BOT_TOKEN;
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 const COINGECKO_API = process.env.COINGECKO_API;
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
 const RPC_URL = 'https://mainnet.base.org';
-const VOID_CONTRACT_ADDRESS = '0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc';
-const YANG_CONTRACT_ADDRESS = '0x384C9c33737121c4499C85D815eA57D1291875Ab';
-const ENTROPY_ADDRESS = '0x3ea7299b87deA5D7617a0D28C3879b4277CBDa67';
+const VOID_CONTRACT_ADDRESS = process.env.VOID_CONTRACT_ADDRESS;
+const YANG_CONTRACT_ADDRESS = process.env.YANG_CONTRACT_ADDRESS;
+const ENTROPY_ADDRESS = process.env.ENTROPY_ADDRESS;
 
 // Constants
 const VOID_TOKEN_DECIMALS = 18;
@@ -25,9 +27,9 @@ const YANG_INITIAL_SUPPLY = 2500000;
 const VOID_BURN_ANIMATION = "https://voidonbase.com/burn.jpg";
 const YANG_BURN_ANIMATION = "https://fluxonbase.com/burn.jpg";
 
-// Initialize Telegram bot
-const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
-
+// Initialize separate Telegram bots
+const voidBot = new TelegramBot(VOID_TELEGRAM_BOT_TOKEN, { polling: true });
+const yangBot = new TelegramBot(YANG_TELEGRAM_BOT_TOKEN, { polling: true });
 // Initialize providers and contracts
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
@@ -105,8 +107,10 @@ let voidTotalBurnedAmount = 0;
 let yangTotalBurnedAmount = 0;
 let currentVoidUsdPrice = null;
 let currentYangPrice = 0;
-const messageQueue = [];
-let isSendingMessage = false;
+const voidMessageQueue = [];
+const yangMessageQueue = [];
+let isVoidSendingMessage = false;
+let isYangSendingMessage = false;
 let processedVoidTransactions = new Set();
 let processedUniswapTransactions = new Set();
 
@@ -152,71 +156,100 @@ function getRankImageUrl(voidRank) {
 }
 
 // Message queue functions
-function addToMessageQueue(message) {
-  messageQueue.push(message);
+function addToVoidMessageQueue(message) {
+  voidMessageQueue.push(message);
 }
 
-function addToBurnQueue(photo, options) {
-  messageQueue.push({ photo, options });
-  sendBurnFromQueue();
+function addToVoidBurnQueue(photo, options) {
+  voidMessageQueue.push({ photo, options });
+  sendVoidBurnFromQueue();
 }
 
-async function sendBurnFromQueue() {
-  if (messageQueue.length > 0 && !isSendingMessage) {
-    isSendingMessage = true;
-    const message = messageQueue.shift();
+function addToYangBurnQueue(photo, options) {
+  yangMessageQueue.push({ photo, options });
+  sendYangBurnFromQueue();
+}
+
+async function sendVoidBurnFromQueue() {
+  if (voidMessageQueue.length > 0 && !isVoidSendingMessage) {
+    isVoidSendingMessage = true;
+    const message = voidMessageQueue.shift();
     try {
       message.options.disable_notification = true;
 
-      const sentMessage = await bot.sendPhoto(
-        TELEGRAM_CHAT_ID,
+      const sentMessage = await voidBot.sendPhoto(
+        VOID_TELEGRAM_CHAT_ID,
         message.photo,
         message.options
       );
       
-      await bot.pinChatMessage(TELEGRAM_CHAT_ID, sentMessage.message_id, {
+      await voidBot.pinChatMessage(VOID_TELEGRAM_CHAT_ID, sentMessage.message_id, {
         disable_notification: true
       });
 
-      console.log(`[${new Date().toISOString()}] Burn message sent and pinned successfully.`);
+      console.log(`[${new Date().toISOString()}] VOID burn message sent and pinned successfully.`);
     } catch (error) {
-      console.error(`[${new Date().toISOString()}] Error sending or pinning message:`, error);
+      console.error(`[${new Date().toISOString()}] Error sending or pinning VOID message:`, error);
     }
     setTimeout(() => {
-      isSendingMessage = false;
-      sendBurnFromQueue();
+      isVoidSendingMessage = false;
+      sendVoidBurnFromQueue();
     }, 500);
   }
 }
 
-async function sendMessageFromQueue() {
-  if (messageQueue.length > 0 && !isSendingMessage) {
-    isSendingMessage = true;
-    const message = messageQueue.shift();
+async function sendYangBurnFromQueue() {
+  if (yangMessageQueue.length > 0 && !isYangSendingMessage) {
+    isYangSendingMessage = true;
+    const message = yangMessageQueue.shift();
     try {
-      await bot.sendPhoto(
-        TELEGRAM_CHAT_ID,
+      message.options.disable_notification = true;
+
+      const sentMessage = await yangBot.sendPhoto(
+        YANG_TELEGRAM_CHAT_ID,
+        message.photo,
+        message.options
+      );
+      
+      await yangBot.pinChatMessage(YANG_TELEGRAM_CHAT_ID, sentMessage.message_id, {
+        disable_notification: true
+      });
+
+      console.log(`[${new Date().toISOString()}] YANG burn message sent and pinned successfully.`);
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] Error sending or pinning YANG message:`, error);
+    }
+    setTimeout(() => {
+      isYangSendingMessage = false;
+      sendYangBurnFromQueue();
+    }, 500);
+  }
+}
+
+async function sendVoidPhotoMessage(photo, options) {
+  addToVoidMessageQueue({ photo, options });
+  sendVoidMessageFromQueue();
+}
+
+
+async function sendVoidMessageFromQueue() {
+  if (voidMessageQueue.length > 0 && !isVoidSendingMessage) {
+    isVoidSendingMessage = true;
+    const message = voidMessageQueue.shift();
+    try {
+      await voidBot.sendPhoto(
+        VOID_TELEGRAM_CHAT_ID,
         message.photo,
         message.options
       );
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error("Error sending VOID message:", error);
     }
     setTimeout(() => {
-      isSendingMessage = false;
-      sendMessageFromQueue();
+      isVoidSendingMessage = false;
+      sendVoidMessageFromQueue();
     }, 500);
   }
-}
-
-async function sendPhotoMessage(photo, options) {
-  addToMessageQueue({ photo, options });
-  sendMessageFromQueue();
-}
-
-async function sendAnimationMessage(photo, options) {
-  addToBurnQueue({ photo, options });
-  sendBurnFromQueue();
 }
 
 // VOID-specific functions
@@ -299,7 +332,7 @@ async function detectVoidBurnEvent() {
         parse_mode: "HTML"
       };
 
-      addToBurnQueue(VOID_BURN_ANIMATION, burnMessageOptions);
+      addToVoidBurnQueue(VOID_BURN_ANIMATION, burnMessageOptions);
     });
 
     saveProcessedTransactions();
@@ -393,7 +426,7 @@ const config = {
               parse_mode: "HTML",
             };
 
-            sendPhotoMessage(imageUrl, voidMessageOptions);
+            sendVoidPhotoMessage(imageUrl, voidMessageOptions);
             processedUniswapTransactions.add(transaction.id);
           } else if (isBuy && voidBalance < 1501 && Number(transaction.attributes.volume_in_usd) > 1000) {
             // Handle arbitrage buy transaction
@@ -421,7 +454,7 @@ const config = {
               parse_mode: "HTML",
             };
 
-            sendPhotoMessage(imageUrl, voidMessageOptions);
+            sendVoidPhotoMessage(imageUrl, voidMessageOptions);
             processedUniswapTransactions.add(transaction.id);
           } else {
             processedUniswapTransactions.add(transaction.id);
@@ -581,10 +614,9 @@ async function reportYangBurn(burnedAmount, previousTotalSupply) {
     parse_mode: "HTML",
   };
   
-  sendAnimationMessage(YANG_BURN_ANIMATION, burnAnimationMessageOptions);
+  addToYangBurnQueue(YANG_BURN_ANIMATION, burnAnimationMessageOptions);
 }
 
-// Shared functions
 function scheduleNextCall(callback, delay) {
   setTimeout(() => {
     callback().finally(() => {
