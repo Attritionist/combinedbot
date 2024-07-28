@@ -418,7 +418,7 @@ async function detectVoidBurnEvent() {
       const txHash = transaction.hash;
       const txHashLink = `https://basescan.org/tx/${txHash}`;
       const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
-      const percentBurned = ((VOID_INITIAL_SUPPLY - voidTotalBurnedAmount) / VOID_INITIAL_SUPPLY) * 100;
+      const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
       const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${amountBurned.toFixed(3)} VOID\nPercent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
 
       const burnMessageOptions = {
@@ -434,7 +434,6 @@ async function detectVoidBurnEvent() {
     console.error("Error detecting VOID burn event:", error);
   }
 }
-
 async function detectUniswapLatestTransaction() {
   const poolAddresses = Object.keys(POOL_MAPPING);
 
