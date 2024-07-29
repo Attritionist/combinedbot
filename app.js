@@ -561,6 +561,31 @@ const config = {
   });
 }
 
+async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
+  let retries = 0;
+  while (retries < maxRetries) {
+    try {
+      console.log(`[${new Date().toISOString()}] Attempting to claim VOID (attempt ${retries + 1})...`);
+      const claimTx = await voidContract.claimVoid();
+      console.log(`[${new Date().toISOString()}] Claim transaction sent: ${claimTx.hash}`);
+      const claimReceipt = await claimTx.wait();
+      console.log(`[${new Date().toISOString()}] Claim transaction confirmed. Gas used: ${claimReceipt.gasUsed.toString()}`);
+      return claimReceipt; // Success, return the receipt
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] Error claiming VOID (attempt ${retries + 1}):`, error.message);
+      if (error.message.includes('network block skew detected') || error.message.includes('transaction failed')) {
+        const delay = initialDelay * Math.pow(2, retries);
+        console.log(`[${new Date().toISOString()}] Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        retries++;
+      } else {
+        throw error; // If it's a different error, throw it
+      }
+    }
+  }
+  throw new Error('Max retries reached for VOID claim');
+}
+
 async function claimLoop() {
   try {
     console.log(`[${new Date().toISOString()}] Checking if it's time to claim VOID...`);
@@ -588,14 +613,8 @@ async function claimLoop() {
     }
 
     if (canClaim) {
-      console.log(`[${new Date().toISOString()}] Claim time reached. Attempting to claim VOID...`);
-
       try {
-        const claimTx = await voidContract.claimVoid();
-        console.log(`[${new Date().toISOString()}] Claim transaction sent: ${claimTx.hash}`);
-        const claimReceipt = await claimTx.wait();
-        console.log(`[${new Date().toISOString()}] Claim transaction confirmed. Gas used: ${claimReceipt.gasUsed.toString()}`);
-        
+        await claimVoidWithRetry();
         timeLeft = await voidContract.timeLeft();
         console.log(`[${new Date().toISOString()}] Raw new time left until next claim: ${timeLeft.toString()} seconds`);
         
@@ -603,7 +622,7 @@ async function claimLoop() {
         timeLeft = timeLeft.add(buffer);
         console.log(`[${new Date().toISOString()}] New time left with buffer: ${timeLeft.toString()} seconds (including ${buffer.toString()} seconds buffer)`);
       } catch (claimError) {
-        console.error(`[${new Date().toISOString()}] Error claiming VOID:`, claimError.message);
+        console.error(`[${new Date().toISOString()}] Error claiming VOID after retries:`, claimError.message);
         timeLeft = BigNumber.from(300); // Check again in 5 minutes
       }
     }
@@ -652,15 +671,28 @@ async function updateYangTotalBurnedAmount() {
   }
 }
 
-async function doBurn() {
-  try {
-    console.log('Calling YANG doBurn function...');
-    const tx = await yangContract.doBurn();
-    await tx.wait();
-    console.log('YANG burn transaction successful:', tx.hash);
-  } catch (error) {
-    console.error('Error calling YANG doBurn:', error);
+async function doBurnWithRetry(maxRetries = 5, initialDelay = 1000) {
+  let retries = 0;
+  while (retries < maxRetries) {
+    try {
+      console.log('Calling YANG doBurn function...');
+      const tx = await yangContract.doBurn();
+      await tx.wait();
+      console.log('YANG burn transaction successful:', tx.hash);
+      return; // Success, exit the function
+    } catch (error) {
+      console.error(`Error calling YANG doBurn (attempt ${retries + 1}):`, error.message);
+      if (error.message.includes('network block skew detected')) {
+        const delay = initialDelay * Math.pow(2, retries);
+        console.log(`Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        retries++;
+      } else {
+        throw error; // If it's a different error, throw it
+      }
+    }
   }
+  throw new Error('Max retries reached for YANG doBurn');
 }
 
 async function getCurrentYangPrice() {
@@ -754,7 +786,7 @@ function scheduleHourlyYangBurn() {
   const delay = (60 * 60 * 1000) - (now.getMinutes() * 60 * 1000 + now.getSeconds() * 1000 + now.getMilliseconds()) + (10 * 1000);
   
   setTimeout(() => {
-    doBurn().then(() => {
+    doBurnWithRetry().then(() => {
       console.log("Hourly YANG burn completed");
       scheduleHourlyYangBurn(); // Schedule next burn
     }).catch(error => {
