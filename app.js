@@ -603,7 +603,7 @@ async function claimLoop() {
       timeLeft = await voidContract.timeLeft();
       console.log(`[${new Date().toISOString()}] Raw time left until next claim: ${timeLeft.toString()} seconds`);
       
-      const buffer = BigNumber.from(10);
+      const buffer = BigNumber.from(20);
       timeLeft = timeLeft.add(buffer);
       console.log(`[${new Date().toISOString()}] Time left with buffer: ${timeLeft.toString()} seconds (including ${buffer.toString()} seconds buffer)`);
     } catch (error) {
@@ -618,7 +618,7 @@ async function claimLoop() {
         timeLeft = await voidContract.timeLeft();
         console.log(`[${new Date().toISOString()}] Raw new time left until next claim: ${timeLeft.toString()} seconds`);
         
-        const buffer = BigNumber.from(10);
+        const buffer = BigNumber.from(20);
         timeLeft = timeLeft.add(buffer);
         console.log(`[${new Date().toISOString()}] New time left with buffer: ${timeLeft.toString()} seconds (including ${buffer.toString()} seconds buffer)`);
       } catch (claimError) {
@@ -783,14 +783,15 @@ async function fetchInitialUniswapTransactions() {
 
 function scheduleHourlyYangBurn() {
   const now = new Date();
-  const delay = (60 * 60 * 1000) - (now.getMinutes() * 60 * 1000 + now.getSeconds() * 1000 + now.getMilliseconds()) + (10 * 1000);
+  const buffer = 20000; // 20 seconds buffer
+  const delay = (60 * 60 * 1000) - (now.getMinutes() * 60 * 1000 + now.getSeconds() * 1000 + now.getMilliseconds()) + buffer;
   
   setTimeout(() => {
     doBurnWithRetry().then(() => {
-      console.log("Hourly YANG burn completed");
+      console.log(`[${new Date().toISOString()}] Hourly YANG burn completed`);
       scheduleHourlyYangBurn(); // Schedule next burn
     }).catch(error => {
-      console.error("Error during hourly YANG burn:", error);
+      console.error(`[${new Date().toISOString()}] Error during hourly YANG burn:`, error);
       scheduleHourlyYangBurn(); // Reschedule even if there was an error
     });
   }, delay);
