@@ -603,7 +603,7 @@ async function claimLoop() {
       timeLeft = await voidContract.timeLeft();
       console.log(`[${new Date().toISOString()}] Raw time left until next claim: ${timeLeft.toString()} seconds`);
       
-      const buffer = BigNumber.from(20);
+      const buffer = BigNumber.from(40);
       timeLeft = timeLeft.add(buffer);
       console.log(`[${new Date().toISOString()}] Time left with buffer: ${timeLeft.toString()} seconds (including ${buffer.toString()} seconds buffer)`);
     } catch (error) {
@@ -618,7 +618,7 @@ async function claimLoop() {
         timeLeft = await voidContract.timeLeft();
         console.log(`[${new Date().toISOString()}] Raw new time left until next claim: ${timeLeft.toString()} seconds`);
         
-        const buffer = BigNumber.from(20);
+        const buffer = BigNumber.from(40);
         timeLeft = timeLeft.add(buffer);
         console.log(`[${new Date().toISOString()}] New time left with buffer: ${timeLeft.toString()} seconds (including ${buffer.toString()} seconds buffer)`);
       } catch (claimError) {
@@ -783,7 +783,7 @@ async function fetchInitialUniswapTransactions() {
 
 function scheduleHourlyYangBurn() {
   const now = new Date();
-  const buffer = 20000; // 20 seconds buffer
+  const buffer = 40000; // 40 seconds buffer
   const delay = (60 * 60 * 1000) - (now.getMinutes() * 60 * 1000 + now.getSeconds() * 1000 + now.getMilliseconds()) + buffer;
   
   setTimeout(() => {
