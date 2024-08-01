@@ -30,6 +30,7 @@ const YANG_BURN_ANIMATION = "https://fluxonbase.com/burn.jpg";
 // Initialize separate Telegram bots
 const voidBot = new TelegramBot(VOID_TELEGRAM_BOT_TOKEN, { polling: true });
 const yangBot = new TelegramBot(YANG_TELEGRAM_BOT_TOKEN, { polling: true });
+
 // Initialize providers and contracts
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
@@ -123,6 +124,22 @@ const POOL_MAPPING = {
 
 const REVERSED_POOLS = [];
 
+// Gas Price Optimizer Function
+async function getOptimizedGasPrice() {
+  try {
+    const gasPrice = await provider.getGasPrice();
+    const gasPriceGwei = ethers.utils.formatUnits(gasPrice, 'gwei');
+    console.log(`Current network gas price: ${gasPriceGwei} Gwei`);
+    
+    const optimizedGasPrice = gasPrice.mul(110).div(100); // 110% of current gas price
+    console.log(`Optimized gas price: ${ethers.utils.formatUnits(optimizedGasPrice, 'gwei')} Gwei`);
+    
+    return optimizedGasPrice;
+  } catch (error) {
+    console.error('Error fetching gas price:', error);
+    return ethers.utils.parseUnits('0.1', 'gwei');
+  }
+}
 function getVoidRank(voidBalance) {
   const VOID_RANKS = {
     "VOID Ultimate": 2000000,
@@ -566,11 +583,14 @@ async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
   while (retries < maxRetries) {
     try {
       console.log(`[${new Date().toISOString()}] Attempting to claim VOID (attempt ${retries + 1})...`);
-      const claimTx = await voidContract.claimVoid();
+      
+      const optimizedGasPrice = await getOptimizedGasPrice();
+      
+      const claimTx = await voidContract.claimVoid({ gasPrice: optimizedGasPrice });
       console.log(`[${new Date().toISOString()}] Claim transaction sent: ${claimTx.hash}`);
       const claimReceipt = await claimTx.wait();
       console.log(`[${new Date().toISOString()}] Claim transaction confirmed. Gas used: ${claimReceipt.gasUsed.toString()}`);
-      return claimReceipt; // Success, return the receipt
+      return claimReceipt;
     } catch (error) {
       console.error(`[${new Date().toISOString()}] Error claiming VOID (attempt ${retries + 1}):`, error.message);
       if (error.message.includes('network block skew detected') || error.message.includes('transaction failed')) {
@@ -579,7 +599,7 @@ async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
         await new Promise(resolve => setTimeout(resolve, delay));
         retries++;
       } else {
-        throw error; // If it's a different error, throw it
+        throw error;
       }
     }
   }
@@ -595,7 +615,8 @@ async function claimLoop() {
 
     try {
       console.log(`[${new Date().toISOString()}] Attempting to call timeLeftCheck...`);
-      const tx = await voidContract.timeLeftCheck();
+      const optimizedGasPrice = await getOptimizedGasPrice();
+      const tx = await voidContract.timeLeftCheck({ gasPrice: optimizedGasPrice });
       console.log(`[${new Date().toISOString()}] timeLeftCheck transaction sent: ${tx.hash}`);
       const receipt = await tx.wait();
       console.log(`[${new Date().toISOString()}] timeLeftCheck transaction confirmed. Gas used: ${receipt.gasUsed.toString()}`);
@@ -670,16 +691,18 @@ async function updateYangTotalBurnedAmount() {
     console.error("Error updating total YANG burned amount:", error);
   }
 }
-
 async function doBurnWithRetry(maxRetries = 5, initialDelay = 1000) {
   let retries = 0;
   while (retries < maxRetries) {
     try {
       console.log('Calling YANG doBurn function...');
-      const tx = await yangContract.doBurn();
+      
+      const optimizedGasPrice = await getOptimizedGasPrice();
+      
+      const tx = await yangContract.doBurn({ gasPrice: optimizedGasPrice });
       await tx.wait();
       console.log('YANG burn transaction successful:', tx.hash);
-      return; // Success, exit the function
+      return;
     } catch (error) {
       console.error(`Error calling YANG doBurn (attempt ${retries + 1}):`, error.message);
       if (error.message.includes('network block skew detected')) {
@@ -688,7 +711,7 @@ async function doBurnWithRetry(maxRetries = 5, initialDelay = 1000) {
         await new Promise(resolve => setTimeout(resolve, delay));
         retries++;
       } else {
-        throw error; // If it's a different error, throw it
+        throw error;
       }
     }
   }
@@ -798,7 +821,7 @@ function scheduleHourlyYangBurn() {
 }
 
 // Initialize and start the combined script
-async function initializeAndStart() {
+sync function initializeAndStart() {
   try {
     console.log("Initializing combined VOID and YANG bot...");
 
@@ -839,7 +862,5 @@ async function initializeAndStart() {
 
 // Start the combined bot
 initializeAndStart();
-
-
 
 
