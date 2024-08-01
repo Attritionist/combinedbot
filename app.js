@@ -821,7 +821,7 @@ function scheduleHourlyYangBurn() {
 }
 
 // Initialize and start the combined script
-sync function initializeAndStart() {
+async function initializeAndStart() {
   try {
     console.log("Initializing combined VOID and YANG bot...");
 
