@@ -755,7 +755,7 @@ async function reportYangBurn(burnedAmount, previousTotalSupply) {
   const newlyBurnedPercent = (burnedAmount / YANG_INITIAL_SUPPLY) * 100;
   const currentPrice = await getCurrentYangPrice();
   
-  const burnMessage = `YANG Burned!\n\n☀️☀️☀️☀️☀️\n🔥 Burned: ${burnedAmount.toFixed(8)} YANG (${newlyBurnedPercent.toFixed(4)}%)\n🔥 Total Burned: ${yangTotalBurnedAmount.toFixed(8)} YANG\n🔥 Total Percent Burned: ${percentBurned.toFixed(2)}%\n☯️ YANG to YIN ratio: ${currentPrice}`;
+  const burnMessage = `YANG Burned!\n\n☀️☀️☀️☀️☀️\n🔥 Burned: ${burnedAmount.toFixed(8)} YANG (${newlyBurnedPercent.toFixed(4)}%)\n🔥 Total Burned: ${yangTotalBurnedAmount.toFixed(8)} YANG\n🔥 Total Percent Burned: ${percentBurned.toFixed(2)}%\n☯️ YIN to YANG ratio: ${currentPrice}`;
 
   const burnAnimationMessageOptions = {
     caption: burnMessage,
