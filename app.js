@@ -836,12 +836,12 @@ async function initializeAndStart() {
     await updateVoidTotalBurnedAmount();
     scheduleNextCall(detectVoidBurnEvent, 20000);
     await fetchInitialUniswapTransactions();
-    scheduleNextCall(detectUniswapLatestTransaction, 7500);
+    scheduleNextCall(detectUniswapLatestTransaction, 25000);
     claimLoop();
 
     // Initialize YANG-specific processes
     await updateYangTotalBurnedAmount();
-    scheduleNextCall(checkYangTotalSupply, 15000);
+    scheduleNextCall(checkYangTotalSupply, 30000);
     scheduleHourlyYangBurn();
 
     // Start updating VOID price
