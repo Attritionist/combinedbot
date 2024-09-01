@@ -118,8 +118,7 @@ let processedUniswapTransactions = new Set();
 const processedTransactionsFilePath = "processed_transactions.json";
 
 const POOL_MAPPING = {
-  "0xb14e941d34d61ae251ccc08ac15b8455ae9f60a5": "VOID/ETH",
-  "0x53a1d9ad828d2ac5f67007738cc5688a753241ba": "VOID/YIN"
+  "0xb14e941d34d61ae251ccc08ac15b8455ae9f60a5": "VOID/ETH"
 };
 
 const REVERSED_POOLS = [];
