@@ -507,7 +507,7 @@ const config = {
         if (balanceDetailResponse.data.status === "1") {
           const voidBalance = balanceDetailResponse.data.result / 10 ** VOID_TOKEN_DECIMALS;
 
-          if (isBuy && voidBalance > 1501 && Number(transaction.attributes.volume_in_usd) > 100) {
+          if (isBuy && voidBalance > 501 && Number(transaction.attributes.volume_in_usd) > 40) {
             // Handle normal buy transaction
             const emojiCount = Math.min(Math.ceil(transaction.attributes.volume_in_usd / 100), 96);
             let emojiString = "";
@@ -537,7 +537,7 @@ const config = {
 
             sendVoidPhotoMessage(imageUrl, voidMessageOptions);
             processedUniswapTransactions.add(transaction.id);
-          } else if (isBuy && voidBalance < 1501 && Number(transaction.attributes.volume_in_usd) > 1000) {
+          } else if (isBuy && voidBalance < 501 && Number(transaction.attributes.volume_in_usd) > 250) {
             // Handle arbitrage buy transaction
             const emojiCount = Math.floor(Math.min(Math.ceil(transaction.attributes.volume_in_usd / 100), 96));
             let emojiString = "";
