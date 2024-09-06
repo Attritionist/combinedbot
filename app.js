@@ -412,9 +412,16 @@ async function handleSwapEvent(event) {
     const formattedVoidAmount = ethers.utils.formatUnits(voidAmount.toString(), VOID_TOKEN_DECIMALS);
     const buyerBalance = await voidToken.balanceOf(recipient);
     
+    // Calculate USD value of the transaction
+    const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
+    
     
     const isArbitrage = Number(buyerBalance) < 501
     
+    if ((isArbitrage && transactionValueUSD < 200) || (!isArbitrage && transactionValueUSD < 50)) {
+      console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)} (Arbitrage: ${isArbitrage})`);
+      return;
+    }
     const txHash = event.transactionHash;
     const txHashLink = `https://basescan.org/tx/${txHash}`;
     const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
@@ -430,14 +437,14 @@ async function handleSwapEvent(event) {
     const emojiString = isArbitrage ? "🤖🔩".repeat(emojiCount) : "🟣🔥".repeat(emojiCount);
     
     const message = `${emojiString}
-💸 Bought ${Number(formattedVoidAmount).toFixed(2)} VOID ($${(Number(formattedVoidAmount) * currentVoidUsdPrice).toFixed(2)}) (<a href="https://debank.com/profile/${recipient}">View Address</a>)
+💸 Bought ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) (<a href="https://debank.com/profile/${recipient}">View Address</a>)
 🟣 VOID Price: $${currentVoidUsdPrice.toFixed(5)}
 💰 Market Cap: $${marketCap.toFixed(0)}
 🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID
 🔥 Percent Burned: ${percentBurned.toFixed(3)}%
 <a href="${chartLink}">📈 Chart</a>
 <a href="${txHashLink}">💱 TX Hash</a>
-⚖️ Remaining VOID Balance: ${Number(buyerBalance).toFixed(2)}
+⚖️ Remaining VOID Balance: ${ethers.utils.formatUnits(buyerBalance, VOID_TOKEN_DECIMALS)}
 🛡️ VOID Rank: ${voidRank}
 🚰 Pool: VOID/ETH
 ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
@@ -448,8 +455,10 @@ ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
     };
 
     sendVoidPhotoMessage(imageUrl, messageOptions);
-    console.log(`VOID Buy detected: ${formattedVoidAmount} VOID, Buyer: ${recipient}, Price Impact: ${priceImpact}%, Is Arbitrage: ${isArbitrage}`);
+    
+    console.log(`VOID Buy detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), Buyer: ${recipient}, Is Arbitrage: ${isArbitrage}`);
   }
+  
   processedTransactions.add(txHash);
   if (processedTransactions.size % 100 === 0) { // Save every 100 transactions
     saveProcessedTransactions();
