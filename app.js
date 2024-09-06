@@ -564,27 +564,17 @@ async function handleSwapEvent(event) {
       const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
       console.log(`Formatted VOID amount: ${formattedVoidAmount}`);
 
-      let buyerBalanceBefore, buyerBalanceAfter, balanceChange;
-      try {
-        // Fetch buyer's balance before and after the transaction
-        buyerBalanceBefore = await voidToken.balanceOf(recipient, { blockTag: event.blockNumber - 1 });
-        buyerBalanceAfter = await voidToken.balanceOf(recipient);
+     const buyerBalanceAfter = await voidToken.balanceOf(recipient);
+
+ 
         
         console.log(`Buyer (${recipient}) balance before: ${ethers.utils.formatUnits(buyerBalanceBefore, VOID_TOKEN_DECIMALS)}`);
         console.log(`Buyer (${recipient}) balance after: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}`);
 
-        balanceChange = buyerBalanceAfter.sub(buyerBalanceBefore);
-        console.log(`Balance change: ${ethers.utils.formatUnits(balanceChange, VOID_TOKEN_DECIMALS)}`);
-      } catch (error) {
-        console.error('Error fetching buyer balance:', error);
-        console.log('Stopping event processing due to balance fetch failure');
-        return;
-      }
-
       const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
       console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
       
-      const isArbitrage = balanceChange.lt(ethers.utils.parseUnits("10", VOID_TOKEN_DECIMALS))
+      const isArbitrage = Number(ethers.utils.formatUnits(buyerBalance, VOID_TOKEN_DECIMALS)) < 501
       console.log(`Is arbitrage: ${isArbitrage}`);
       
       if ((isArbitrage && transactionValueUSD < 200) || (!isArbitrage && transactionValueUSD < 50)) {
