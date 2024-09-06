@@ -366,65 +366,57 @@ async function handleSwapEvent(event) {
       return;
     }
 
-    const txHash = event.transactionHash;
-    
-    if (processedTransactions.has(txHash)) {
-      return; // Skip already processed transactions silently
-    }
-    
     const args = event.args;
     console.log('Event args:', args);
 
-    // Safely access properties
-    const recipient = args.recipient || args.to; // Some implementations use 'to' instead of 'recipient'
-    const amount0 = args.amount0 || args.amount0In || args.amount0Out;
-    const amount1 = args.amount1 || args.amount1In || args.amount1Out;
-    const sqrtPriceX96 = args.sqrtPriceX96;
+    const recipient = args.recipient;
+    const amount0 = args.amount0;
+    const amount1 = args.amount1;
+    const txHash = event.transactionHash;
 
-    if (!recipient || (amount0 === undefined && amount1 === undefined)) {
+    if (!recipient || !amount0 || !amount1) {
       console.error('Missing critical event data:', args);
+      return;
+    }
+
+    if (processedTransactions.has(txHash)) {
+      console.log(`Already processed transaction: ${txHash}`);
       return;
     }
 
     const token0 = await voidPool.token0();
     const isVoidToken0 = token0.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase();
     
-    const voidAmount = isVoidToken0 ? (amount0.lt(0) ? amount0.mul(-1) : amount0) : (amount1.lt(0) ? amount1.mul(-1) : amount1);
+    const voidAmount = isVoidToken0 ? amount0 : amount1.mul(-1);
     const isVoidBuy = voidAmount.gt(0);
     
     if (isVoidBuy) {
-      const formattedVoidAmount = ethers.utils.formatUnits(voidAmount.toString(), VOID_TOKEN_DECIMALS);
+      const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
       const buyerBalance = await voidToken.balanceOf(recipient);
       
-      // Calculate USD value of the transaction
       const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
       
-      // Calculate price impact (this is an approximation and may need refinement)
-      const poolFee = await voidPool.fee();
-      const priceImpact = (Number(formattedVoidAmount) * poolFee) / 1e6; // poolFee is in basis points
+      const isArbitrage = Number(ethers.utils.formatUnits(buyerBalance, VOID_TOKEN_DECIMALS)) < 501
       
-      const isArbitrage = Number(ethers.utils.formatUnits(buyerBalance, VOID_TOKEN_DECIMALS)) < 501 && priceImpact > 1; // 1% price impact threshold
-      
-      // Apply filters based on transaction value
       if ((isArbitrage && transactionValueUSD < 200) || (!isArbitrage && transactionValueUSD < 50)) {
         console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)} (Arbitrage: ${isArbitrage})`);
         return;
       }
-    const txHash = event.transactionHash;
-    const txHashLink = `https://basescan.org/tx/${txHash}`;
-    const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
-    
-    const totalSupply = VOID_INITIAL_SUPPLY - voidTotalBurnedAmount;
-    const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
-    const marketCap = currentVoidUsdPrice * totalSupply;
-    
-    const voidRank = getVoidRank(Number(ethers.utils.formatUnits(buyerBalance, VOID_TOKEN_DECIMALS)));
-    const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
-    
-    const emojiCount = Math.min(Math.ceil(priceImpact * 100), 96);
-    const emojiString = isArbitrage ? "🤖🔩".repeat(emojiCount) : "🟣🔥".repeat(emojiCount);
-    
-    const message = `${emojiString}
+
+      const txHashLink = `https://basescan.org/tx/${txHash}`;
+      const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
+      
+      const totalSupply = VOID_INITIAL_SUPPLY - voidTotalBurnedAmount;
+      const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
+      const marketCap = currentVoidUsdPrice * totalSupply;
+      
+      const voidRank = getVoidRank(Number(ethers.utils.formatUnits(buyerBalance, VOID_TOKEN_DECIMALS)));
+      const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
+      
+      const emojiCount = Math.min(Math.ceil(transactionValueUSD * 100), 96);
+      const emojiString = isArbitrage ? "🤖🔩".repeat(emojiCount) : "🟣🔥".repeat(emojiCount);
+      
+      const message = `${emojiString}
 💸 Bought ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) (<a href="https://debank.com/profile/${recipient}">View Address</a>)
 🟣 VOID Price: $${currentVoidUsdPrice.toFixed(5)}
 💰 Market Cap: $${marketCap.toFixed(0)}
@@ -437,24 +429,24 @@ async function handleSwapEvent(event) {
 🚰 Pool: VOID/ETH
 ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
 
-    const messageOptions = {
-      caption: message,
-      parse_mode: "HTML",
-    };
+      const messageOptions = {
+        caption: message,
+        parse_mode: "HTML",
+      };
 
-    sendVoidPhotoMessage(imageUrl, messageOptions);
+      sendVoidPhotoMessage(imageUrl, messageOptions);
+      
+      console.log(`VOID Buy detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), Buyer: ${recipient}, Is Arbitrage: ${isArbitrage}`);
+    }
     
-    console.log(`VOID Buy detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), Buyer: ${recipient}, Is Arbitrage: ${isArbitrage}`);
+    processedTransactions.add(txHash);
+    if (processedTransactions.size % 100 === 0) {
+      saveProcessedTransactions();
+    }
+  } catch (error) {
+    console.error('Error in handleSwapEvent:', error);
+    console.error('Event that caused the error:', JSON.stringify(event, null, 2));
   }
-  
-  processedTransactions.add(txHash);
-  if (processedTransactions.size % 100 === 0) {
-    saveProcessedTransactions();
-  }
-} catch (error) {
-  console.error('Error in handleSwapEvent:', error);
-  console.error('Event that caused the error:', JSON.stringify(event, null, 2));
-}
 }
 
 function initializeWebSocket() {
