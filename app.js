@@ -517,9 +517,9 @@ async function handleTransfer(from, to, value, event) {
     console.log(`Burn detected: ${amountBurned.toFixed(2)} VOID, Total burned: ${voidTotalBurnedAmount.toFixed(2)} VOID`);
   }
 }
-async function handleSwapEvent(event, isYang = false) {
+async function handleSwapEvent(event) {
   try {
-    console.log(`Received ${isYang ? 'YANG' : 'VOID'} Swap event:`, JSON.stringify(event, null, 2));
+    console.log('Received Swap event:', JSON.stringify(event, null, 2));
 
     const txHash = event.transactionHash;
     console.log(`Transaction Hash: ${txHash}`);
@@ -533,12 +533,11 @@ async function handleSwapEvent(event, isYang = false) {
     const amount0 = event.args.amount0;
     const amount1 = event.args.amount1;
 
-    // Determine which amount is VOID/YANG based on whether it's negative (sold) or positive (bought)
-    const tokenAmount = amount0.lt(0) ? amount0.abs() : amount1.abs();
-    const formattedTokenAmount = ethers.utils.formatUnits(tokenAmount, isYang ? YANG_TOKEN_DECIMALS : VOID_TOKEN_DECIMALS);
+    // Determine which amount is VOID based on whether it's negative (sold) or positive (bought)
+    const voidAmount = amount0.lt(0) ? amount0.abs() : amount1.abs();
+    const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
     
-    const currentUsdPrice = isYang ? currentYangUsdPrice : currentVoidUsdPrice;
-    const transactionValueUSD = Number(formattedTokenAmount) * currentUsdPrice;
+    const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
     
     if (transactionValueUSD < 5) {
@@ -547,42 +546,42 @@ async function handleSwapEvent(event, isYang = false) {
     }
 
     // Check the balance of the "From" address
-    const fromBalance = await (isYang ? yangToken : voidToken).balanceOf(fromAddress);
-    const formattedFromBalance = Number(ethers.utils.formatUnits(fromBalance, isYang ? YANG_TOKEN_DECIMALS : VOID_TOKEN_DECIMALS));
-    console.log(`From address (${fromAddress}) balance: ${formattedFromBalance.toFixed(2)} ${isYang ? 'YANG' : 'VOID'}`);
+    const fromBalance = await voidToken.balanceOf(fromAddress);
+    const formattedFromBalance = Number(ethers.utils.formatUnits(fromBalance, VOID_TOKEN_DECIMALS));
+    console.log(`From address (${fromAddress}) balance: ${formattedFromBalance.toFixed(2)} VOID`);
 
     const isArbitrage = formattedFromBalance < 500;
 
-    let buyerAddress, buyerBalanceAfter, tokenRank;
+    let buyerAddress, buyerBalanceAfter, voidRank;
     if (!isArbitrage) {
       buyerAddress = fromAddress;
       buyerBalanceAfter = fromBalance;
-      tokenRank = isYang ? getYangRank(formattedFromBalance) : getVoidRank(formattedFromBalance);
+      voidRank = getVoidRank(formattedFromBalance);
     }
 
-    const totalSupply = (isYang ? YANG_INITIAL_SUPPLY : VOID_INITIAL_SUPPLY) - (isYang ? yangTotalBurnedAmount : voidTotalBurnedAmount);
-    const percentBurned = ((isYang ? yangTotalBurnedAmount : voidTotalBurnedAmount) / (isYang ? YANG_INITIAL_SUPPLY : VOID_INITIAL_SUPPLY)) * 100;
-    const marketCap = currentUsdPrice * totalSupply;
+    const totalSupply = VOID_INITIAL_SUPPLY - voidTotalBurnedAmount;
+    const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
+    const marketCap = currentVoidUsdPrice * totalSupply;
     
-    const imageUrl = isArbitrage ? (isYang ? "https://yangonbase.com/arbitrage.jpg" : "https://voidonbase.com/arbitrage.jpg") : getRankImageUrl(tokenRank, isYang);
+    const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
     
     const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 100), 48); // Max 48 pairs (96 emojis)
-    const emojiString = isArbitrage ? "🤖🔩".repeat(emojiPairCount) : (isYang ? "☯️🔥" : "🟣🔥").repeat(emojiPairCount);
+    const emojiString = isArbitrage ? "🤖🔩".repeat(emojiPairCount) : "🟣🔥".repeat(emojiPairCount);
 
     const txHashLink = `https://basescan.org/tx/${txHash}`;
-    const chartLink = isYang ? "https://dexscreener.com/base/0x69d71cef3bb97b1d5f6761ba90c0e2a60c390151" : "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
+    const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
     
     const message = `${emojiString}
-${isArbitrage ? '🤖 Arbitrage' : '💸 Bought'} ${Number(formattedTokenAmount).toFixed(2)} ${isYang ? 'YANG' : 'VOID'} ($${transactionValueUSD.toFixed(2)}) ${buyerAddress ? `(<a href="https://debank.com/profile/${buyerAddress}">View Address</a>)` : ''}
-${isYang ? '☯️' : '🟣'} ${isYang ? 'YANG' : 'VOID'} Price: $${currentUsdPrice.toFixed(5)}
+${isArbitrage ? '🤖 Arbitrage' : '💸 Bought'} ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) ${buyerAddress ? `(<a href="https://debank.com/profile/${buyerAddress}">View Address</a>)` : ''}
+🟣 VOID Price: $${currentVoidUsdPrice.toFixed(5)}
 💰 Market Cap: $${marketCap.toFixed(0)}
-🔥 Total Burned: ${(isYang ? yangTotalBurnedAmount : voidTotalBurnedAmount).toFixed(2)} ${isYang ? 'YANG' : 'VOID'}
+🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID
 🔥 Percent Burned: ${percentBurned.toFixed(3)}%
 <a href="${chartLink}">📈 Chart</a>
 <a href="${txHashLink}">💱 TX Hash</a>
-${!isArbitrage ? `⚖️ Remaining ${isYang ? 'YANG' : 'VOID'} Balance: ${formattedFromBalance.toFixed(2)}
-🛡️ ${isYang ? 'YANG' : 'VOID'} Rank: ${tokenRank}` : ''}
-🚰 Pool: ${isYang ? 'YANG' : 'VOID'}/ETH
+${!isArbitrage ? `⚖️ Remaining VOID Balance: ${formattedFromBalance.toFixed(2)}
+🛡️ VOID Rank: ${voidRank}` : ''}
+🚰 Pool: VOID/ETH
 ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
 
     const messageOptions = {
@@ -590,22 +589,18 @@ ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
       parse_mode: "HTML",
     };
 
-    console.log(`Sending ${isYang ? 'YANG' : 'VOID'} photo message...`);
-    if (isYang) {
-      await sendYangPhotoMessage(imageUrl, messageOptions);
-    } else {
-      await sendVoidPhotoMessage(imageUrl, messageOptions);
-    }
-    console.log(`${isYang ? 'YANG' : 'VOID'} photo message sent successfully.`);
+    console.log('Sending VOID photo message...');
+    await sendVoidPhotoMessage(imageUrl, messageOptions);
+    console.log('VOID photo message sent successfully.');
     
-    console.log(`${isYang ? 'YANG' : 'VOID'} ${isArbitrage ? 'Arbitrage' : 'Buy'} detected: ${formattedTokenAmount} ${isYang ? 'YANG' : 'VOID'} ($${transactionValueUSD.toFixed(2)}), From Address: ${fromAddress}, Is Arbitrage: ${isArbitrage}`);
+    console.log(`VOID ${isArbitrage ? 'Arbitrage' : 'Buy'} detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), From Address: ${fromAddress}, Is Arbitrage: ${isArbitrage}`);
 
     processedTransactions.add(txHash);
     if (processedTransactions.size % 100 === 0) {
       saveProcessedTransactions();
     }
   } catch (error) {
-    console.error(`Error in handle${isYang ? 'Yang' : 'Void'}SwapEvent:`, error);
+    console.error('Error in handleSwapEvent:', error);
     console.error('Event that caused the error:', JSON.stringify(event, null, 2));
   }
 }
@@ -615,7 +610,7 @@ function initializeWebSocket() {
     handleSwapEvent({
       args: { sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick },
       transactionHash: event.transactionHash
-    }, false);
+    });
   });
 
 voidTokenWS.on('Transfer', handleTransfer);
