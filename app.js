@@ -534,7 +534,7 @@ async function handleSwapEvent(event) {
     const amount1 = args.amount1;
     const txHash = event.transactionHash;
 
-    console.log(`Recipient: ${recipient}`);
+    console.log(`Initial Recipient: ${recipient}`);
     console.log(`Amount0: ${amount0.toString()}`);
     console.log(`Amount1: ${amount1.toString()}`);
     console.log(`Transaction Hash: ${txHash}`);
@@ -564,9 +564,24 @@ async function handleSwapEvent(event) {
       const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
       console.log(`Formatted VOID amount: ${formattedVoidAmount}`);
 
-     const buyerBalanceAfter = await voidToken.balanceOf(recipient);
+      // Get the transaction receipt to find the actual recipient
+      const txReceipt = await provider.getTransactionReceipt(txHash);
+      const transferLogs = txReceipt.logs.filter(log => 
+        log.address.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase() &&
+        log.topics[0] === ethers.utils.id("Transfer(address,address,uint256)")
+      );
 
-        console.log(`Buyer (${recipient}) balance after: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}`);
+      let actualRecipient = recipient;
+      if (transferLogs.length > 0) {
+        const lastTransferLog = transferLogs[transferLogs.length - 1];
+        actualRecipient = ethers.utils.getAddress('0x' + lastTransferLog.topics[2].slice(26));
+      }
+      console.log(`Actual Recipient: ${actualRecipient}`);
+
+      const buyerBalanceAfter = await voidToken.balanceOf(actualRecipient);
+        
+        console.log(`Buyer (${actualRecipient}) balance after: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}`);
+
 
       const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
       console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
@@ -593,7 +608,7 @@ async function handleSwapEvent(event) {
       const emojiString = isArbitrage ? "🤖🔩".repeat(emojiCount) : "🟣🔥".repeat(emojiCount);
       
       const message = `${emojiString}
-💸 Bought ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) (<a href="https://debank.com/profile/${recipient}">View Address</a>)
+💸 Bought ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) (<a href="https://debank.com/profile/${actualRecipient}">View Address</a>)
 🟣 VOID Price: $${currentVoidUsdPrice.toFixed(5)}
 💰 Market Cap: $${marketCap.toFixed(0)}
 🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID
@@ -614,7 +629,7 @@ ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
       await sendVoidPhotoMessage(imageUrl, messageOptions);
       console.log('VOID photo message sent successfully.');
       
-      console.log(`VOID Buy detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), Buyer: ${recipient}, Is Arbitrage: ${isArbitrage}`);
+      console.log(`VOID Buy detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), Buyer: ${actualRecipient}, Is Arbitrage: ${isArbitrage}`);
     } else {
       console.log('This is not a VOID buy transaction.');
     }
