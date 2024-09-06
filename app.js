@@ -604,8 +604,10 @@ async function handleSwapEvent(event) {
       const voidRank = getVoidRank(Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)));
       const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
       
-      const emojiCount = Math.min(Math.ceil(transactionValueUSD * 100), 96);
-      const emojiString = isArbitrage ? "🤖🔩".repeat(emojiCount) : "🟣🔥".repeat(emojiCount);
+      const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 50), 48); // Max 48 pairs (96 emojis)
+      const emojiString = isArbitrage 
+  ? "🤖🔩".repeat(emojiPairCount)
+  : "🟣🔥".repeat(emojiPairCount);
       
       const message = `${emojiString}
 💸 Bought ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) (<a href="https://debank.com/profile/${actualRecipient}">View Address</a>)
@@ -615,7 +617,7 @@ async function handleSwapEvent(event) {
 🔥 Percent Burned: ${percentBurned.toFixed(3)}%
 <a href="${chartLink}">📈 Chart</a>
 <a href="${txHashLink}">💱 TX Hash</a>
-⚖️ Remaining VOID Balance: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}
+⚖️ Remaining VOID Balance: ${Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)).toFixed(2)}
 🛡️ VOID Rank: ${voidRank}
 🚰 Pool: VOID/ETH
 ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
