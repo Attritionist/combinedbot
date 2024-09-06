@@ -1,10 +1,8 @@
 const axios = require("axios");
 const TelegramBot = require("node-telegram-bot-api");
-const Web3 = require('web3');
-const { ethers } = require('ethers');
+const ethers = require('ethers');
+const fs = require('fs');
 require("dotenv").config();
-const { BigNumber } = require('ethers');
-const fs = require("fs");
 
 // Environment variables
 const VOID_TELEGRAM_CHAT_ID = process.env.VOID_TELEGRAM_CHAT_ID;
@@ -14,10 +12,12 @@ const YANG_TELEGRAM_BOT_TOKEN = process.env.YANG_TELEGRAM_BOT_TOKEN;
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY;
 const COINGECKO_API = process.env.COINGECKO_API;
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
-const RPC_URL = 'https://mainnet.base.org';
+const RPC_URL = process.env.RPC_URL || 'https://mainnet.base.org';
+const WSS_ENDPOINT = process.env.WSS_ENDPOINT;
 const VOID_CONTRACT_ADDRESS = process.env.VOID_CONTRACT_ADDRESS;
 const YANG_CONTRACT_ADDRESS = process.env.YANG_CONTRACT_ADDRESS;
-const ENTROPY_ADDRESS = process.env.ENTROPY_ADDRESS;
+const VOID_POOL_ADDRESS = process.env.VOID_POOL_ADDRESS;
+const BURN_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 // Constants
 const VOID_TOKEN_DECIMALS = 18;
@@ -27,81 +27,42 @@ const YANG_INITIAL_SUPPLY = 2500000;
 const VOID_BURN_ANIMATION = "https://voidonbase.com/burn.jpg";
 const YANG_BURN_ANIMATION = "https://fluxonbase.com/burn.jpg";
 
-// Initialize separate Telegram bots
+// Initialize Telegram bots
 const voidBot = new TelegramBot(VOID_TELEGRAM_BOT_TOKEN, { polling: true });
 const yangBot = new TelegramBot(YANG_TELEGRAM_BOT_TOKEN, { polling: true });
 
 // Initialize providers and contracts
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
+const wsProvider = new ethers.providers.WebSocketProvider(WSS_ENDPOINT);
 const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
 
+const ERC20_ABI = [
+  'function balanceOf(address account) view returns (uint256)',
+  'function decimals() view returns (uint8)',
+];
+
+const UNISWAP_V3_POOL_ABI = [
+  'event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)',
+  'function token0() view returns (address)',
+  'function token1() view returns (address)',
+  'function fee() view returns (uint24)',
+];
+
 const VOID_ABI = [
-    {
-        "inputs": [],
-        "name": "claimVoid",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "timeLeftCheck",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "timeLeft",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    }
+  'function claimVoid() nonpayable',
+  'function timeLeftCheck() nonpayable returns (uint256)',
+  'function timeLeft() view returns (uint256)',
 ];
 
 const YANG_ABI = [
-  {
-    "inputs": [],
-    "name": "doBurn",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "_success",
-        "type": "bool"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "getCurrentPrice",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  }
+  'function doBurn() nonpayable returns (bool)',
+  'function getCurrentPrice() view returns (uint256)',
 ];
 
-const voidContract = new ethers.Contract(ENTROPY_ADDRESS, VOID_ABI, wallet);
+const voidContract = new ethers.Contract(VOID_CONTRACT_ADDRESS, VOID_ABI, wallet);
 const yangContract = new ethers.Contract(YANG_CONTRACT_ADDRESS, YANG_ABI, wallet);
+const voidToken = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, provider);
+const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, wsProvider);
 
 // Global variables
 let voidTotalBurnedAmount = 0;
@@ -112,27 +73,39 @@ const voidMessageQueue = [];
 const yangMessageQueue = [];
 let isVoidSendingMessage = false;
 let isYangSendingMessage = false;
-let processedVoidTransactions = new Set();
-let processedUniswapTransactions = new Set();
-
 const processedTransactionsFilePath = "processed_transactions.json";
+let processedTransactions = new Set();
 
-const POOL_MAPPING = {
-  "0xb14e941d34d61ae251ccc08ac15b8455ae9f60a5": "VOID/ETH"
-};
+// Load processed transactions from file
+function loadProcessedTransactions() {
+  try {
+    if (fs.existsSync(processedTransactionsFilePath)) {
+      const data = fs.readFileSync(processedTransactionsFilePath, "utf-8");
+      if (data.trim()) {
+        processedTransactions = new Set(JSON.parse(data));
+        console.log(`Loaded ${processedTransactions.size} processed transactions.`);
+      }
+    }
+  } catch (error) {
+    console.error("Error loading processed transactions:", error);
+  }
+}
 
-const REVERSED_POOLS = [];
-
+// Save processed transactions to file
+function saveProcessedTransactions() {
+  try {
+    const data = JSON.stringify(Array.from(processedTransactions));
+    fs.writeFileSync(processedTransactionsFilePath, data, "utf-8");
+    console.log(`Saved ${processedTransactions.size} processed transactions.`);
+  } catch (error) {
+    console.error("Error saving processed transactions:", error);
+  }
+}
 // Gas Price Optimizer Function
 async function getOptimizedGasPrice() {
   try {
     const gasPrice = await provider.getGasPrice();
-    const gasPriceGwei = ethers.utils.formatUnits(gasPrice, 'gwei');
-    console.log(`Current network gas price: ${gasPriceGwei} Gwei`);
-    
     const optimizedGasPrice = gasPrice.mul(110).div(100); // 110% of current gas price
-    console.log(`Optimized gas price: ${ethers.utils.formatUnits(optimizedGasPrice, 'gwei')} Gwei`);
-    
     return optimizedGasPrice;
   } catch (error) {
     console.error('Error fetching gas price:', error);
@@ -377,204 +350,121 @@ async function getVoidPrice() {
   }
 }
 
-async function updateVoidTotalBurnedAmount() {
+async function initializeTotalBurnedAmount() {
   try {
-    const config = {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows; Windows NT 10.4; WOW64; en-US) AppleWebKit/537.20 (KHTML, like Gecko) Chrome/53.0.3086.259 Safari/602.4 Edge/12.29796'
-      },
-      withCredentials: true
-    };
-
-    const apiUrl = `https://api.basescan.org/api?module=account&action=tokenbalance&contractaddress=${VOID_CONTRACT_ADDRESS}&address=0x0000000000000000000000000000000000000000&apikey=${ETHERSCAN_API_KEY}`;
-    const response = await axios.get(apiUrl, config);
-
-    if (response.data.status === "1") {
-      const balance = Number(response.data.result) / 10 ** VOID_TOKEN_DECIMALS;
-      voidTotalBurnedAmount = balance;
-    }
+    const burnedBalance = await voidToken.balanceOf(BURN_ADDRESS);
+    voidTotalBurnedAmount = Number(ethers.utils.formatUnits(burnedBalance, VOID_TOKEN_DECIMALS));
+    console.log(`Initialized total burned VOID amount: ${voidTotalBurnedAmount.toFixed(2)}`);
   } catch (error) {
-    console.error("Error updating total burned amount:", error);
+    console.error("Error initializing total burned amount:", error);
   }
 }
 
-async function detectVoidBurnEvent() {
-  try {
-    const config = {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows; Windows NT 10.4; WOW64; en-US) AppleWebKit/537.20 (KHTML, like Gecko) Chrome/53.0.3086.259 Safari/602.4 Edge/12.29796'
-      },
-      withCredentials: true
+// Modify handleTransfer function to update total burned amount in real-time
+async function handleTransfer(from, to, value, event) {
+  if (to.toLowerCase() === BURN_ADDRESS.toLowerCase()) {
+    const txHash = event.transactionHash;
+    
+    if (processedTransactions.has(txHash)) {
+      return; // Skip already processed transactions silently
+    }
+    
+    const amountBurned = Number(ethers.utils.formatUnits(value, VOID_TOKEN_DECIMALS));
+    voidTotalBurnedAmount += amountBurned;
+    
+    const txHashLink = `https://basescan.org/tx/${txHash}`;
+    const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
+    const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
+    
+    const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${amountBurned.toFixed(2)} VOID\n🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID\n🔥 Percent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
+
+    const burnMessageOptions = {
+      caption: burnMessage,
+      parse_mode: "HTML"
     };
 
-    const apiUrl = `https://api.basescan.org/api?module=account&action=tokentx&contractaddress=${VOID_CONTRACT_ADDRESS}&address=0x0000000000000000000000000000000000000000&page=1&offset=1&sort=desc&apikey=${ETHERSCAN_API_KEY}`;
-    const response = await axios.get(apiUrl, config);
-
-    if (response.data.status !== "1") {
-      throw new Error("Failed to retrieve token transactions");
-    }
-
-    await updateVoidTotalBurnedAmount();
-
-    const newBurnEvents = response.data.result.filter(
-      (transaction) =>
-        transaction.to.toLowerCase() ===
-        "0x0000000000000000000000000000000000000000" &&
-        !processedVoidTransactions.has(transaction.hash)
-    );
-
-    if (newBurnEvents.length === 0) {
-      console.log("No new VOID burn events detected.");
-      return;
-    }
-
-    newBurnEvents.forEach((transaction) => {
-      processedVoidTransactions.add(transaction.hash);
-      const amountBurned = Number(transaction.value) / 10 ** VOID_TOKEN_DECIMALS;
-      const txHash = transaction.hash;
-      const txHashLink = `https://basescan.org/tx/${txHash}`;
-      const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
-      const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
-      const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${amountBurned.toFixed(3)} VOID\nPercent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
-
-      const burnMessageOptions = {
-        caption: burnMessage,
-        parse_mode: "HTML"
-      };
-
-      addToVoidBurnQueue(VOID_BURN_ANIMATION, burnMessageOptions);
-    });
-
+    addToVoidBurnQueue(VOID_BURN_ANIMATION, burnMessageOptions);
+    
+    processedTransactions.add(txHash);
     saveProcessedTransactions();
-  } catch (error) {
-    console.error("Error detecting VOID burn event:", error);
+
+    console.log(`Burn detected: ${amountBurned.toFixed(2)} VOID, Total burned: ${voidTotalBurnedAmount.toFixed(2)} VOID`);
   }
 }
-async function detectUniswapLatestTransaction() {
-  const poolAddresses = Object.keys(POOL_MAPPING);
 
-  poolAddresses.forEach(async (poolAddress) => {
-    try {
-      const voidPrice = currentVoidUsdPrice;
-      const apiUrl = `https://pro-api.coingecko.com/api/v3/onchain/networks/base/pools/${poolAddress}/trades`;
-      const response = await axios.get(apiUrl, {
-        headers: {
-          "X-Cg-Pro-Api-Key": COINGECKO_API,
-        }
-      });
 
-      if (response.status !== 200) {
-        throw new Error("Failed to retrieve latest Uniswap transactions");
-      }
-
-      console.log(`Checking for new transactions on ${POOL_MAPPING[poolAddress]} pool...`);
-
-      const transactionsToProcess = response.data.data.filter(
-        (transaction) => !processedUniswapTransactions.has(transaction.id)
-      );
-
-      if (transactionsToProcess.length === 0) {
-        console.warn("No new Uniswap transactions detected.");
-        return;
-      }
-
-      transactionsToProcess.forEach(async (transaction) => {
-        const isBuy = transaction.attributes.kind == 'buy';
-        const fromAddress = transaction.attributes.tx_from_address;
-        const addressLink = `https://debank.com/profile/${fromAddress}`;
-        const txHashLink = `https://basescan.org/tx/${transaction.attributes.tx_hash}`;
-        const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
-        const amountTransferred = REVERSED_POOLS.includes(poolAddress)
-          ? isBuy ? Number(transaction.attributes.from_token_amount) : Number(transaction.attributes.to_token_amount)
-          : isBuy ? Number(transaction.attributes.to_token_amount) : Number(transaction.attributes.from_token_amount);
-
-        const totalSupply = VOID_INITIAL_SUPPLY - voidTotalBurnedAmount;
-        const percentBurned = voidTotalBurnedAmount / VOID_INITIAL_SUPPLY * 100;
-        const transactionvalue = transaction.attributes.volume_in_usd;
-        const marketCap = voidPrice * totalSupply;
-
-        const balanceDetailsUrl = `https://api.basescan.org/api?module=account&action=tokenbalance&contractaddress=${VOID_CONTRACT_ADDRESS}&address=${fromAddress}&tag=latest&apikey=${ETHERSCAN_API_KEY}`;
-
-const config = {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows; Windows NT 10.0; x64) AppleWebKit/603.37 (KHTML, like Gecko) Chrome/53.0.2093.181 Safari/534.4 Edge/12.40330'
-          },
-          withCredentials: true
-        };
-
-        const balanceDetailResponse = await axios.get(balanceDetailsUrl, config);
-
-        if (balanceDetailResponse.data.status === "1") {
-          const voidBalance = balanceDetailResponse.data.result / 10 ** VOID_TOKEN_DECIMALS;
-
-          if (isBuy && voidBalance > 501 && Number(transaction.attributes.volume_in_usd) > 40) {
-            // Handle normal buy transaction
-            const emojiCount = Math.min(Math.ceil(transaction.attributes.volume_in_usd / 100), 96);
-            let emojiString = "";
-
-            for (let i = 0; i < emojiCount; i++) {
-              emojiString += "🟣🔥";
-            }
-
-            const voidRank = getVoidRank(voidBalance);
-            const imageUrl = getRankImageUrl(voidRank);
-
-            const message = `${emojiString}
-💸 Bought ${amountTransferred.toFixed(2)} VOID ($${transactionvalue}) (<a href="${addressLink}">View Address</a>)
-🟣 VOID Price: $${voidPrice.toFixed(5)}
+async function handleSwapEvent(event) {
+  const txHash = event.transactionHash;
+  
+  if (processedTransactions.has(txHash)) {
+    return; // Skip already processed transactions silently
+  }
+  
+  const { sender, recipient, amount0, amount1, sqrtPriceX96 } = event.args;
+  
+  const token0 = await voidPool.token0();
+  const isVoidToken0 = token0.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase();
+  
+  const voidAmount = isVoidToken0 ? -amount0 : amount1;
+  const isVoidBuy = voidAmount > 0;
+  
+  if (isVoidBuy) {
+    const formattedVoidAmount = ethers.utils.formatUnits(voidAmount.toString(), VOID_TOKEN_DECIMALS);
+    const buyerBalance = await voidToken.balanceOf(recipient);
+    
+    
+    const isArbitrage = Number(buyerBalance) < 501
+    
+    const txHash = event.transactionHash;
+    const txHashLink = `https://basescan.org/tx/${txHash}`;
+    const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
+    
+    const totalSupply = VOID_INITIAL_SUPPLY - voidTotalBurnedAmount;
+    const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
+    const marketCap = currentVoidUsdPrice * totalSupply;
+    
+    const voidRank = getVoidRank(Number(buyerBalance));
+    const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
+    
+    const emojiCount = Math.min(Math.ceil(priceImpact * 100), 96);
+    const emojiString = isArbitrage ? "🤖🔩".repeat(emojiCount) : "🟣🔥".repeat(emojiCount);
+    
+    const message = `${emojiString}
+💸 Bought ${Number(formattedVoidAmount).toFixed(2)} VOID ($${(Number(formattedVoidAmount) * currentVoidUsdPrice).toFixed(2)}) (<a href="https://debank.com/profile/${recipient}">View Address</a>)
+🟣 VOID Price: $${currentVoidUsdPrice.toFixed(5)}
 💰 Market Cap: $${marketCap.toFixed(0)}
+🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID
 🔥 Percent Burned: ${percentBurned.toFixed(3)}%
 <a href="${chartLink}">📈 Chart</a>
 <a href="${txHashLink}">💱 TX Hash</a>
-⚖️ Remaining VOID Balance: ${voidBalance.toFixed(2)}
+⚖️ Remaining VOID Balance: ${Number(buyerBalance).toFixed(2)}
 🛡️ VOID Rank: ${voidRank}
-🚰 Pool: ${POOL_MAPPING[poolAddress]}`;
+🚰 Pool: VOID/ETH
+${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
 
-            const voidMessageOptions = {
-              caption: message,
-              parse_mode: "HTML",
-            };
+    const messageOptions = {
+      caption: message,
+      parse_mode: "HTML",
+    };
 
-            sendVoidPhotoMessage(imageUrl, voidMessageOptions);
-            processedUniswapTransactions.add(transaction.id);
-          } else if (isBuy && voidBalance < 501 && Number(transaction.attributes.volume_in_usd) > 250) {
-            // Handle arbitrage buy transaction
-            const emojiCount = Math.floor(Math.min(Math.ceil(transaction.attributes.volume_in_usd / 100), 96));
-            let emojiString = "";
-
-            for (let i = 0; i < emojiCount; i++) {
-              emojiString += "🤖🔩";
-            }
-
-            const imageUrl = "https://voidonbase.com/arbitrage.jpg";
-
-            const message = `${emojiString}
-💸 Bought ${amountTransferred.toFixed(2)} VOID ($${transactionvalue}) (<a href="${addressLink}">View Address</a>)
-🟣 VOID Price: $${voidPrice.toFixed(5)}
-💰 Market Cap: $${marketCap.toFixed(0)}
-🔥 Percent Burned: ${percentBurned.toFixed(3)}%
-<a href="${chartLink}">📈 Chart</a>
-<a href="${txHashLink}">💱 TX Hash</a>
-⚠️ Arbitrage Transaction
-🚰 Pool: ${POOL_MAPPING[poolAddress]}`;
-
-            const voidMessageOptions = {
-              caption: message,
-              parse_mode: "HTML",
-            };
-
-            sendVoidPhotoMessage(imageUrl, voidMessageOptions);
-            processedUniswapTransactions.add(transaction.id);
-          } else {
-            processedUniswapTransactions.add(transaction.id);
-            console.error("Transaction amount too low to process, tx hash:", transaction.attributes.tx_hash + " skipping...");
-          }
-        }
-      });
-    } catch (error) {
-      console.error("Error in detectUniswapLatestTransaction:", error);
-    }
+    sendVoidPhotoMessage(imageUrl, messageOptions);
+    console.log(`VOID Buy detected: ${formattedVoidAmount} VOID, Buyer: ${recipient}, Price Impact: ${priceImpact}%, Is Arbitrage: ${isArbitrage}`);
+  }
+  processedTransactions.add(txHash);
+  if (processedTransactions.size % 100 === 0) { // Save every 100 transactions
+    saveProcessedTransactions();
+  }
+}
+function initializeWebSocket() {
+  voidPool.on('Swap', handleSwapEvent);
+  voidToken.on('Transfer', handleTransfer);
+  
+  wsProvider._websocket.on('close', (code) => {
+    console.log(`WebSocket connection closed with code ${code}. Reconnecting...`);
+    setTimeout(initializeWebSocket, 1000);
   });
+  
+  console.log('WebSocket connection established and listening for Swap and Transfer events.');
 }
 
 async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
@@ -623,7 +513,7 @@ async function claimLoop() {
       timeLeft = await voidContract.timeLeft();
       console.log(`[${new Date().toISOString()}] Raw time left until next claim: ${timeLeft.toString()} seconds`);
       
-      const buffer = BigNumber.from(40);
+      const buffer = ethers.BigNumber.from(40);
       timeLeft = timeLeft.add(buffer);
       console.log(`[${new Date().toISOString()}] Time left with buffer: ${timeLeft.toString()} seconds (including ${buffer.toString()} seconds buffer)`);
     } catch (error) {
@@ -638,19 +528,19 @@ async function claimLoop() {
         timeLeft = await voidContract.timeLeft();
         console.log(`[${new Date().toISOString()}] Raw new time left until next claim: ${timeLeft.toString()} seconds`);
         
-        const buffer = BigNumber.from(40);
+        const buffer = ethers.BigNumber.from(40);
         timeLeft = timeLeft.add(buffer);
         console.log(`[${new Date().toISOString()}] New time left with buffer: ${timeLeft.toString()} seconds (including ${buffer.toString()} seconds buffer)`);
       } catch (claimError) {
         console.error(`[${new Date().toISOString()}] Error claiming VOID after retries:`, claimError.message);
-        timeLeft = BigNumber.from(300); // Check again in 5 minutes
+        timeLeft = ethers.BigNumber.from(300); // Check again in 5 minutes
       }
     }
 
-    timeLeft = BigNumber.from(timeLeft);
+    timeLeft = ethers.BigNumber.from(timeLeft);
 
-    const minWaitTime = BigNumber.from(30); // 30 seconds
-    const maxWaitTime = BigNumber.from(173000); // ~48 hours in seconds
+    const minWaitTime = ethers.BigNumber.from(30); // 30 seconds
+    const maxWaitTime = ethers.BigNumber.from(173000); // ~48 hours in seconds
     const waitTime = timeLeft.gt(maxWaitTime) ? maxWaitTime : timeLeft.lt(minWaitTime) ? minWaitTime : timeLeft;
 
     console.log(`[${new Date().toISOString()}] Waiting ${waitTime.toString()} seconds before next check...`);
@@ -671,15 +561,8 @@ async function claimLoop() {
 // YANG-specific functions
 async function updateYangTotalBurnedAmount() {
   try {
-    const config = {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows; Windows NT 10.4; WOW64; en-US) AppleWebKit/537.20 (KHTML, like Gecko) Chrome/53.0.3086.259 Safari/602.4 Edge/12.29796'
-      },
-      withCredentials: true
-    };
-
     const apiUrl = `https://api.basescan.org/api?module=stats&action=tokensupply&contractaddress=${YANG_CONTRACT_ADDRESS}&apikey=${ETHERSCAN_API_KEY}`;
-    const response = await axios.get(apiUrl, config);
+    const response = await axios.get(apiUrl);
 
     if (response.data.status === "1") {
       const currentSupply = Number(response.data.result) / 10 ** YANG_TOKEN_DECIMALS;
@@ -690,6 +573,7 @@ async function updateYangTotalBurnedAmount() {
     console.error("Error updating total YANG burned amount:", error);
   }
 }
+
 async function doBurnWithRetry(maxRetries = 5, initialDelay = 1000) {
   let retries = 0;
   while (retries < maxRetries) {
@@ -772,40 +656,9 @@ function scheduleNextCall(callback, delay) {
   }, delay);
 }
 
-function saveProcessedTransactions() {
-  try {
-    const data = JSON.stringify(Array.from(processedVoidTransactions));
-    fs.writeFileSync(processedTransactionsFilePath, data, "utf-8");
-  } catch (error) {
-    console.error("Error saving processed transactions to file:", error);
-  }
-}
-
-async function fetchInitialUniswapTransactions() {
-  const poolAddresses = Object.keys(POOL_MAPPING);
-
-  for (const poolAddress of poolAddresses) {
-    const apiUrl = `https://pro-api.coingecko.com/api/v3/onchain/networks/base/pools/${poolAddress}/trades`;
-    const response = await axios.get(apiUrl, {
-      headers: {
-        "X-Cg-Pro-Api-Key": COINGECKO_API,
-      }
-    });
-
-    if (response.status !== 200) {
-      throw new Error("Failed to retrieve latest Uniswap transactions");
-    }
-
-    const transactions = response.data.data;
-    for (const transaction of transactions) {
-      processedUniswapTransactions.add(transaction.id);
-    }
-  }
-}
-
 function scheduleHourlyYangBurn() {
   const now = new Date();
-  const buffer = 40000; // 40 seconds buffer
+  const buffer = 30000; // 30 seconds buffer
   const delay = (60 * 60 * 1000) - (now.getMinutes() * 60 * 1000 + now.getSeconds() * 1000 + now.getMilliseconds()) + buffer;
   
   setTimeout(() => {
@@ -818,31 +671,23 @@ function scheduleHourlyYangBurn() {
     });
   }, delay);
 }
-
-// Initialize and start the combined script
 async function initializeAndStart() {
   try {
     console.log("Initializing combined VOID and YANG bot...");
 
-    // Load processed transactions
-    if (fs.existsSync(processedTransactionsFilePath)) {
-      const data = fs.readFileSync(processedTransactionsFilePath, "utf-8");
-      if (data.trim()) {
-        processedVoidTransactions = new Set(JSON.parse(data));
-      }
-    }
-
+    loadProcessedTransactions();
+    
     // Initialize VOID-specific processes
-    await updateVoidTotalBurnedAmount();
-    scheduleNextCall(detectVoidBurnEvent, 20000);
-    await fetchInitialUniswapTransactions();
-    scheduleNextCall(detectUniswapLatestTransaction, 25000);
+    await initializeTotalBurnedAmount(); // New function to initialize burn amount
     claimLoop();
 
     // Initialize YANG-specific processes
     await updateYangTotalBurnedAmount();
     scheduleNextCall(checkYangTotalSupply, 30000);
     scheduleHourlyYangBurn();
+
+    // Initialize WebSocket connection
+    initializeWebSocket();
 
     // Start updating VOID price
     setInterval(async () => {
@@ -851,15 +696,12 @@ async function initializeAndStart() {
         currentVoidUsdPrice = priceInfo.voidPrice;
         console.log(`Updated current VOID USD price to: ${currentVoidUsdPrice}`);
       }
-    }, 45000);
+    }, 30000);
 
     console.log("Combined VOID and YANG bot started successfully!");
   } catch (error) {
     console.error("Error during initialization:", error);
   }
 }
-
 // Start the combined bot
 initializeAndStart();
-
-
