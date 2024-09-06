@@ -71,7 +71,6 @@ const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, wsP
 let voidTotalBurnedAmount = 0;
 let yangTotalBurnedAmount = 0;
 let currentVoidUsdPrice = null;
-let currentYangPrice = 0;
 const voidMessageQueue = [];
 const yangMessageQueue = [];
 let isVoidSendingMessage = false;
@@ -403,7 +402,7 @@ async function handleSwapEvent(event) {
     return; // Skip already processed transactions silently
   }
   
-  const { sender, recipient, amount0, amount1, sqrtPriceX96 } = event.args;
+  const { recipient, amount0, amount1 } = event.args;
   
   const token0 = await voidPool.token0();
   const isVoidToken0 = token0.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase();
