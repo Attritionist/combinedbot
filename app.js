@@ -40,8 +40,8 @@ const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
 const ERC20_ABI = [
   'function balanceOf(address account) view returns (uint256)',
   'function decimals() view returns (uint8)',
+  'event Transfer(address indexed from, address indexed to, uint256 value)'
 ];
-
 const UNISWAP_V3_POOL_ABI = [
   'event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)',
   'function token0() view returns (address)',
@@ -64,6 +64,7 @@ const voidContract = new ethers.Contract(ENTROPY_ADDRESS, VOID_ABI, wallet);
 
 const yangContract = new ethers.Contract(YANG_CONTRACT_ADDRESS, YANG_ABI, wallet);
 const voidToken = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, provider);
+const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, wsProvider);
 const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, wsProvider);
 
 // Global variables
@@ -468,7 +469,7 @@ ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
 }
 function initializeWebSocket() {
   voidPool.on('Swap', handleSwapEvent);
-  voidToken.on('Transfer', handleTransfer);
+  voidTokenWS.on('Transfer', handleTransfer);
   
   wsProvider._websocket.on('close', (code) => {
     console.log(`WebSocket connection closed with code ${code}. Reconnecting...`);
@@ -689,7 +690,7 @@ async function initializeAndStart() {
     loadProcessedTransactions();
     
     // Initialize VOID-specific processes
-    await initializeTotalBurnedAmount(); // New function to initialize burn amount
+    await initializeTotalBurnedAmount();
     claimLoop();
 
     // Initialize YANG-specific processes
@@ -712,6 +713,8 @@ async function initializeAndStart() {
     console.log("Combined VOID and YANG bot started successfully!");
   } catch (error) {
     console.error("Error during initialization:", error);
+    // Implement a retry mechanism or graceful shutdown here
+    setTimeout(initializeAndStart, 60000); // Retry after 1 minute
   }
 }
 // Start the combined bot
