@@ -18,6 +18,7 @@ const VOID_CONTRACT_ADDRESS = process.env.VOID_CONTRACT_ADDRESS;
 const YANG_CONTRACT_ADDRESS = process.env.YANG_CONTRACT_ADDRESS;
 const VOID_POOL_ADDRESS = process.env.VOID_POOL_ADDRESS;
 const BURN_ADDRESS = '0x0000000000000000000000000000000000000000';
+const ENTROPY_ADDRESS = process.env.ENTROPY_ADDRESS;
 
 // Constants
 const VOID_TOKEN_DECIMALS = 18;
@@ -59,7 +60,8 @@ const YANG_ABI = [
   'function getCurrentPrice() view returns (uint256)',
 ];
 
-const voidContract = new ethers.Contract(VOID_CONTRACT_ADDRESS, VOID_ABI, wallet);
+const voidContract = new ethers.Contract(ENTROPY_ADDRESS, VOID_ABI, wallet);
+
 const yangContract = new ethers.Contract(YANG_CONTRACT_ADDRESS, YANG_ABI, wallet);
 const voidToken = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, provider);
 const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, wsProvider);
