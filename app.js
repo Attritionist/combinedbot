@@ -566,15 +566,12 @@ async function handleSwapEvent(event) {
 
      const buyerBalanceAfter = await voidToken.balanceOf(recipient);
 
- 
-        
-        console.log(`Buyer (${recipient}) balance before: ${ethers.utils.formatUnits(buyerBalanceBefore, VOID_TOKEN_DECIMALS)}`);
         console.log(`Buyer (${recipient}) balance after: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}`);
 
       const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
       console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
       
-      const isArbitrage = Number(ethers.utils.formatUnits(buyerBalance, VOID_TOKEN_DECIMALS)) < 501
+      const isArbitrage = Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)) < 501
       console.log(`Is arbitrage: ${isArbitrage}`);
       
       if ((isArbitrage && transactionValueUSD < 200) || (!isArbitrage && transactionValueUSD < 50)) {
