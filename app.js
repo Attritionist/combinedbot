@@ -38,9 +38,169 @@ const wsProvider = new ethers.providers.WebSocketProvider(WSS_ENDPOINT);
 const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
 
 const ERC20_ABI = [
-  'function balanceOf(address account) view returns (uint256)',
-  'function decimals() view returns (uint8)',
-  'event Transfer(address indexed from, address indexed to, uint256 value)'
+  {
+    "inputs": [
+      {"internalType": "address", "name": "deployer", "type": "address"},
+      {"internalType": "uint256", "name": "supply", "type": "uint256"}
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "address", "name": "owner", "type": "address"},
+      {"indexed": true, "internalType": "address", "name": "spender", "type": "address"},
+      {"indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256"}
+    ],
+    "name": "Approval",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "address", "name": "user", "type": "address"},
+      {"indexed": true, "internalType": "address", "name": "newOwner", "type": "address"}
+    ],
+    "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "address", "name": "from", "type": "address"},
+      {"indexed": true, "internalType": "address", "name": "to", "type": "address"},
+      {"indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256"}
+    ],
+    "name": "Transfer",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "DOMAIN_SEPARATOR",
+    "outputs": [{"internalType": "bytes32", "name": "", "type": "bytes32"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "", "type": "address"},
+      {"internalType": "address", "name": "", "type": "address"}
+    ],
+    "name": "allowance",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "spender", "type": "address"},
+      {"internalType": "uint256", "name": "amount", "type": "uint256"}
+    ],
+    "name": "approve",
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "name": "balanceOf",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "decimals",
+    "outputs": [{"internalType": "uint8", "name": "", "type": "uint8"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "name",
+    "outputs": [{"internalType": "string", "name": "", "type": "string"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "name": "nonces",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "owner", "type": "address"},
+      {"internalType": "address", "name": "spender", "type": "address"},
+      {"internalType": "uint256", "name": "value", "type": "uint256"},
+      {"internalType": "uint256", "name": "deadline", "type": "uint256"},
+      {"internalType": "uint8", "name": "v", "type": "uint8"},
+      {"internalType": "bytes32", "name": "r", "type": "bytes32"},
+      {"internalType": "bytes32", "name": "s", "type": "bytes32"}
+    ],
+    "name": "permit",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "renounceOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "symbol",
+    "outputs": [{"internalType": "string", "name": "", "type": "string"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalSupply",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "to", "type": "address"},
+      {"internalType": "uint256", "name": "amount", "type": "uint256"}
+    ],
+    "name": "transfer",
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "address", "name": "from", "type": "address"},
+      {"internalType": "address", "name": "to", "type": "address"},
+      {"internalType": "uint256", "name": "amount", "type": "uint256"}
+    ],
+    "name": "transferFrom",
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "address", "name": "newOwner", "type": "address"}],
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
 ];
 const UNISWAP_V3_POOL_ABI = [
   'event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)',
@@ -404,20 +564,26 @@ async function handleSwapEvent(event) {
       const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
       console.log(`Formatted VOID amount: ${formattedVoidAmount}`);
 
-      // Fetch buyer's balance before and after the transaction
-      const buyerBalanceBefore = await voidToken.balanceOf(recipient, { blockTag: event.blockNumber - 1 });
-      const buyerBalanceAfter = await voidToken.balanceOf(recipient);
-      
-      console.log(`Buyer (${recipient}) balance before: ${ethers.utils.formatUnits(buyerBalanceBefore, VOID_TOKEN_DECIMALS)}`);
-      console.log(`Buyer (${recipient}) balance after: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}`);
+      let buyerBalanceBefore, buyerBalanceAfter, balanceChange;
+      try {
+        // Fetch buyer's balance before and after the transaction
+        buyerBalanceBefore = await voidToken.balanceOf(recipient, { blockTag: event.blockNumber - 1 });
+        buyerBalanceAfter = await voidToken.balanceOf(recipient);
+        
+        console.log(`Buyer (${recipient}) balance before: ${ethers.utils.formatUnits(buyerBalanceBefore, VOID_TOKEN_DECIMALS)}`);
+        console.log(`Buyer (${recipient}) balance after: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}`);
 
-      const balanceChange = buyerBalanceAfter.sub(buyerBalanceBefore);
-      console.log(`Balance change: ${ethers.utils.formatUnits(balanceChange, VOID_TOKEN_DECIMALS)}`);
+        balanceChange = buyerBalanceAfter.sub(buyerBalanceBefore);
+        console.log(`Balance change: ${ethers.utils.formatUnits(balanceChange, VOID_TOKEN_DECIMALS)}`);
+      } catch (error) {
+        console.error('Error fetching buyer balance:', error);
+        console.log('Stopping event processing due to balance fetch failure');
+        return;
+      }
 
       const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
       console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
       
-      // Adjust arbitrage detection logic
       const isArbitrage = balanceChange.lt(ethers.utils.parseUnits("10", VOID_TOKEN_DECIMALS))
       console.log(`Is arbitrage: ${isArbitrage}`);
       
