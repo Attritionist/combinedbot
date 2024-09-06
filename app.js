@@ -580,21 +580,19 @@ async function handleSwapEvent(event) {
     const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
     
-    if ((isArbitrage && transactionValueUSD < 200) || (!isArbitrage && transactionValueUSD < 50)) {
+    if ((isArbitrage && transactionValueUSD < 10) || (!isArbitrage && transactionValueUSD < 5)) {
       console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)} (Arbitrage: ${isArbitrage})`);
       return;
     }
 
-    // Determine the "main" address for reporting purposes
-    const mainAddress = voidTransfers.reduce((max, transfer) => 
-      transfer.amount.abs().gt(max.amount.abs()) ? transfer : max
-    ).from;
+    // Determine the "buyer" address (the address receiving VOID)
+    const buyerAddress = voidTransfers.find(transfer => transfer.amount.gt(0))?.to;
 
     let buyerBalanceAfter, voidRank;
-    if (!isArbitrage) {
+    if (!isArbitrage && buyerAddress) {
       try {
-        buyerBalanceAfter = await voidToken.balanceOf(mainAddress);
-        console.log(`Buyer (${mainAddress}) balance after: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}`);
+        buyerBalanceAfter = await voidToken.balanceOf(buyerAddress);
+        console.log(`Buyer (${buyerAddress}) balance after: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}`);
         voidRank = getVoidRank(Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)));
       } catch (error) {
         console.error('Error fetching buyer balance:', error);
@@ -609,7 +607,7 @@ async function handleSwapEvent(event) {
     
     const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
     
-    const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 50), 48); // Max 48 pairs (96 emojis)
+    const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 100), 48); // Max 48 pairs (96 emojis)
     const emojiString = isArbitrage 
       ? "🤖🔩".repeat(emojiPairCount)
       : "🟣🔥".repeat(emojiPairCount);
@@ -618,14 +616,14 @@ async function handleSwapEvent(event) {
     const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
     
     const message = `${emojiString}
-${isArbitrage ? '🤖 Arbitrage' : '💸 Bought'} ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) (<a href="https://debank.com/profile/${mainAddress}">View Address</a>)
+${isArbitrage ? '🤖 Arbitrage' : '💸 Bought'} ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) ${buyerAddress ? `(<a href="https://debank.com/profile/${buyerAddress}">View Address</a>)` : ''}
 🟣 VOID Price: $${currentVoidUsdPrice.toFixed(5)}
 💰 Market Cap: $${marketCap.toFixed(0)}
 🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID
 🔥 Percent Burned: ${percentBurned.toFixed(3)}%
 <a href="${chartLink}">📈 Chart</a>
 <a href="${txHashLink}">💱 TX Hash</a>
-${!isArbitrage ? `⚖️ Remaining VOID Balance: ${Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)).toFixed(2)}
+${!isArbitrage && buyerAddress ? `⚖️ Remaining VOID Balance: ${Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)).toFixed(2)}
 🛡️ VOID Rank: ${voidRank}` : ''}
 🚰 Pool${isArbitrage ? 's' : ''}: ${isArbitrage ? 'Multiple' : 'VOID/ETH'}
 ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
@@ -639,7 +637,7 @@ ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
     await sendVoidPhotoMessage(imageUrl, messageOptions);
     console.log('VOID photo message sent successfully.');
     
-    console.log(`VOID ${isArbitrage ? 'Arbitrage' : 'Buy'} detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), Main Address: ${mainAddress}, Is Arbitrage: ${isArbitrage}`);
+    console.log(`VOID ${isArbitrage ? 'Arbitrage' : 'Buy'} detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), Buyer Address: ${buyerAddress || 'Unknown'}, Is Arbitrage: ${isArbitrage}`);
 
     processedTransactions.add(txHash);
     if (processedTransactions.size % 100 === 0) {
