@@ -494,7 +494,29 @@ async function initializeTotalBurnedAmount() {
     console.error("Error initializing total burned amount:", error);
   }
 }
+function analyzeVoidTransfers(txReceipt) {
+  const transfers = [];
+  for (const log of txReceipt.logs) {
+    if (log.address.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase() &&
+        log.topics[0] === ethers.utils.id("Transfer(address,address,uint256)")) {
+      const from = ethers.utils.getAddress('0x' + log.topics[1].slice(26));
+      const to = ethers.utils.getAddress('0x' + log.topics[2].slice(26));
+      const amount = ethers.BigNumber.from(log.data);
+      transfers.push({ from, to, amount });
+    }
+  }
+  return transfers;
+}
 
+function detectArbitrage(transfers) {
+  if (transfers.length < 2) return false;
+
+  const netTransfer = transfers.reduce((net, transfer) => net.add(transfer.amount), ethers.BigNumber.from(0));
+  const totalVolume = transfers.reduce((total, transfer) => total.add(transfer.amount.abs()), ethers.BigNumber.from(0));
+
+  // If the net transfer is very small compared to the total volume, it's likely arbitrage
+  return netTransfer.abs().mul(100).lt(totalVolume.mul(5)); // Less than 5% net change
+}
 async function handleTransfer(from, to, value, event) {
   if (to.toLowerCase() === BURN_ADDRESS.toLowerCase()) {
     const txHash = event.transactionHash;
@@ -521,96 +543,73 @@ async function handleSwapEvent(event) {
   try {
     console.log('Received Swap event:', JSON.stringify(event, null, 2));
 
-    if (!event || !event.args) {
-      console.error('Invalid event structure:', event);
-      return;
-    }
-
-    const args = event.args;
-    console.log('Event args:', args);
-
-    const recipient = args.recipient;
-    const amount0 = args.amount0;
-    const amount1 = args.amount1;
     const txHash = event.transactionHash;
-
-    console.log(`Initial Recipient: ${recipient}`);
-    console.log(`Amount0: ${amount0.toString()}`);
-    console.log(`Amount1: ${amount1.toString()}`);
     console.log(`Transaction Hash: ${txHash}`);
-
-    if (!recipient || amount0 === undefined || amount1 === undefined) {
-      console.error('Missing critical event data:', args);
-      return;
-    }
 
     if (processedTransactions.has(txHash)) {
       console.log(`Already processed transaction: ${txHash}`);
       return;
     }
 
-    const token0 = await voidPool.token0();
-    console.log(`Token0: ${token0}`);
-    console.log(`VOID_CONTRACT_ADDRESS: ${VOID_CONTRACT_ADDRESS}`);
-    const isVoidToken0 = token0.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase();
-    console.log(`Is VOID token0: ${isVoidToken0}`);
+    // Get the transaction receipt to analyze all transfers
+    const txReceipt = await provider.getTransactionReceipt(txHash);
     
-    const voidAmount = isVoidToken0 ? amount0.mul(-1) : amount1;
-    console.log(`VOID amount: ${voidAmount.toString()}`);
-    const isVoidBuy = voidAmount.gt(0);
-    console.log(`Is VOID buy: ${isVoidBuy}`);
+    // Analyze VOID transfers
+    const voidTransfers = analyzeVoidTransfers(txReceipt);
     
-    if (isVoidBuy) {
-      const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
-      console.log(`Formatted VOID amount: ${formattedVoidAmount}`);
+    if (voidTransfers.length === 0) {
+      console.log('No VOID transfers found in this transaction.');
+      return;
+    }
 
-      // Get the transaction receipt to find the actual recipient
-      const txReceipt = await provider.getTransactionReceipt(txHash);
-      const transferLogs = txReceipt.logs.filter(log => 
-        log.address.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase() &&
-        log.topics[0] === ethers.utils.id("Transfer(address,address,uint256)")
-      );
+    const isArbitrage = detectArbitrage(voidTransfers);
+    const netVoidTransfer = voidTransfers.reduce((net, transfer) => net.add(transfer.amount), ethers.BigNumber.from(0));
+    
+    // Use the absolute value of the net transfer for reporting
+    const absNetTransfer = netVoidTransfer.abs();
+    const formattedVoidAmount = ethers.utils.formatUnits(absNetTransfer, VOID_TOKEN_DECIMALS);
+    console.log(`Net VOID transfer: ${formattedVoidAmount}`);
 
-      let actualRecipient = recipient;
-      if (transferLogs.length > 0) {
-        const lastTransferLog = transferLogs[transferLogs.length - 1];
-        actualRecipient = ethers.utils.getAddress('0x' + lastTransferLog.topics[2].slice(26));
-      }
-      console.log(`Actual Recipient: ${actualRecipient}`);
+    const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
+    console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
+    
+    if ((isArbitrage && transactionValueUSD < 200) || (!isArbitrage && transactionValueUSD < 50)) {
+      console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)} (Arbitrage: ${isArbitrage})`);
+      return;
+    }
 
-      const buyerBalanceAfter = await voidToken.balanceOf(actualRecipient);
-        
-        console.log(`Buyer (${actualRecipient}) balance after: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}`);
+    // Determine the "recipient" for reporting purposes
+    // For arbitrage, we'll use the address with the largest individual transfer
+    const recipient = isArbitrage 
+      ? voidTransfers.reduce((max, transfer) => transfer.amount.abs().gt(max.amount.abs()) ? transfer : max).to
+      : voidTransfers[voidTransfers.length - 1].to;
 
+    let buyerBalanceAfter;
+    try {
+      buyerBalanceAfter = await voidToken.balanceOf(recipient);
+      console.log(`Buyer (${recipient}) balance after: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}`);
+    } catch (error) {
+      console.error('Error fetching buyer balance:', error);
+      buyerBalanceAfter = ethers.BigNumber.from(0);
+    }
 
-      const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
-      console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
-      
-      const isArbitrage = Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)) < 501
-      console.log(`Is arbitrage: ${isArbitrage}`);
-      
-      if ((isArbitrage && transactionValueUSD < 200) || (!isArbitrage && transactionValueUSD < 50)) {
-        console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)} (Arbitrage: ${isArbitrage})`);
-        return;
-      }
+    const totalSupply = VOID_INITIAL_SUPPLY - voidTotalBurnedAmount;
+    const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
+    const marketCap = currentVoidUsdPrice * totalSupply;
+    
+    const voidRank = getVoidRank(Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)));
+    const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
+    
+    const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 100), 48); // Max 48 pairs (96 emojis)
+    const emojiString = isArbitrage 
+      ? "🤖🔩".repeat(emojiPairCount)
+      : "🟣🔥".repeat(emojiPairCount);
 
-      const txHashLink = `https://basescan.org/tx/${txHash}`;
-      const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
-      
-      const totalSupply = VOID_INITIAL_SUPPLY - voidTotalBurnedAmount;
-      const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
-      const marketCap = currentVoidUsdPrice * totalSupply;
-      
-      const voidRank = getVoidRank(Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)));
-      const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
-      
-      const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 50), 48); // Max 48 pairs (96 emojis)
-      const emojiString = isArbitrage 
-  ? "🤖🔩".repeat(emojiPairCount)
-  : "🟣🔥".repeat(emojiPairCount);
-      
-      const message = `${emojiString}
-💸 Bought ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) (<a href="https://debank.com/profile/${actualRecipient}">View Address</a>)
+    const txHashLink = `https://basescan.org/tx/${txHash}`;
+    const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
+    
+    const message = `${emojiString}
+${isArbitrage ? '🤖 Arbitrage' : '💸 Bought'} ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) (<a href="https://debank.com/profile/${recipient}">View Address</a>)
 🟣 VOID Price: $${currentVoidUsdPrice.toFixed(5)}
 💰 Market Cap: $${marketCap.toFixed(0)}
 🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID
@@ -622,20 +621,17 @@ async function handleSwapEvent(event) {
 🚰 Pool: VOID/ETH
 ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
 
-      const messageOptions = {
-        caption: message,
-        parse_mode: "HTML",
-      };
+    const messageOptions = {
+      caption: message,
+      parse_mode: "HTML",
+    };
 
-      console.log('Sending VOID photo message...');
-      await sendVoidPhotoMessage(imageUrl, messageOptions);
-      console.log('VOID photo message sent successfully.');
-      
-      console.log(`VOID Buy detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), Buyer: ${actualRecipient}, Is Arbitrage: ${isArbitrage}`);
-    } else {
-      console.log('This is not a VOID buy transaction.');
-    }
+    console.log('Sending VOID photo message...');
+    await sendVoidPhotoMessage(imageUrl, messageOptions);
+    console.log('VOID photo message sent successfully.');
     
+    console.log(`VOID ${isArbitrage ? 'Arbitrage' : 'Buy'} detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), Main Address: ${recipient}, Is Arbitrage: ${isArbitrage}`);
+
     processedTransactions.add(txHash);
     if (processedTransactions.size % 100 === 0) {
       saveProcessedTransactions();
