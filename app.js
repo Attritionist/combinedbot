@@ -580,7 +580,7 @@ async function handleSwapEvent(event) {
     const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
     
-    if ((isArbitrage && transactionValueUSD < 10) || (!isArbitrage && transactionValueUSD < 5)) {
+    if ((isArbitrage && transactionValueUSD < 200) || (!isArbitrage && transactionValueUSD < 50)) {
       console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)} (Arbitrage: ${isArbitrage})`);
       return;
     }
@@ -609,7 +609,7 @@ async function handleSwapEvent(event) {
     
     const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
     
-    const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 100), 48); // Max 48 pairs (96 emojis)
+    const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 50), 48); // Max 48 pairs (96 emojis)
     const emojiString = isArbitrage 
       ? "🤖🔩".repeat(emojiPairCount)
       : "🟣🔥".repeat(emojiPairCount);
