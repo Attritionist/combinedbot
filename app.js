@@ -61,7 +61,6 @@ const YANG_ABI = [
 ];
 
 const voidContract = new ethers.Contract(ENTROPY_ADDRESS, VOID_ABI, wallet);
-
 const yangContract = new ethers.Contract(YANG_CONTRACT_ADDRESS, YANG_ABI, wallet);
 const voidToken = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, provider);
 const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, wsProvider);
@@ -78,7 +77,7 @@ let isYangSendingMessage = false;
 const processedTransactionsFilePath = "processed_transactions.json";
 let processedTransactions = new Set();
 
-// Load processed transactions from file
+// Utility functions
 function loadProcessedTransactions() {
   try {
     if (fs.existsSync(processedTransactionsFilePath)) {
@@ -93,7 +92,6 @@ function loadProcessedTransactions() {
   }
 }
 
-// Save processed transactions to file
 function saveProcessedTransactions() {
   try {
     const data = JSON.stringify(Array.from(processedTransactions));
@@ -103,12 +101,11 @@ function saveProcessedTransactions() {
     console.error("Error saving processed transactions:", error);
   }
 }
-// Gas Price Optimizer Function
+
 async function getOptimizedGasPrice() {
   try {
     const gasPrice = await provider.getGasPrice();
-    const optimizedGasPrice = gasPrice.mul(110).div(100); // 110% of current gas price
-    return optimizedGasPrice;
+    return gasPrice.mul(110).div(100); // 110% of current gas price
   } catch (error) {
     console.error('Error fetching gas price:', error);
     return ethers.utils.parseUnits('0.1', 'gwei');
@@ -261,17 +258,8 @@ async function sendVoidBurnFromQueue() {
     const message = voidMessageQueue.shift();
     try {
       message.options.disable_notification = true;
-
-      const sentMessage = await voidBot.sendPhoto(
-        VOID_TELEGRAM_CHAT_ID,
-        message.photo,
-        message.options
-      );
-      
-      await voidBot.pinChatMessage(VOID_TELEGRAM_CHAT_ID, sentMessage.message_id, {
-        disable_notification: true
-      });
-
+      const sentMessage = await voidBot.sendPhoto(VOID_TELEGRAM_CHAT_ID, message.photo, message.options);
+      await voidBot.pinChatMessage(VOID_TELEGRAM_CHAT_ID, sentMessage.message_id, { disable_notification: true });
       console.log(`[${new Date().toISOString()}] VOID burn message sent and pinned successfully.`);
     } catch (error) {
       console.error(`[${new Date().toISOString()}] Error sending or pinning VOID message:`, error);
@@ -289,17 +277,8 @@ async function sendYangBurnFromQueue() {
     const message = yangMessageQueue.shift();
     try {
       message.options.disable_notification = true;
-
-      const sentMessage = await yangBot.sendPhoto(
-        YANG_TELEGRAM_CHAT_ID,
-        message.photo,
-        message.options
-      );
-      
-      await yangBot.pinChatMessage(YANG_TELEGRAM_CHAT_ID, sentMessage.message_id, {
-        disable_notification: true
-      });
-
+      const sentMessage = await yangBot.sendPhoto(YANG_TELEGRAM_CHAT_ID, message.photo, message.options);
+      await yangBot.pinChatMessage(YANG_TELEGRAM_CHAT_ID, sentMessage.message_id, { disable_notification: true });
       console.log(`[${new Date().toISOString()}] YANG burn message sent and pinned successfully.`);
     } catch (error) {
       console.error(`[${new Date().toISOString()}] Error sending or pinning YANG message:`, error);
@@ -316,17 +295,12 @@ async function sendVoidPhotoMessage(photo, options) {
   sendVoidMessageFromQueue();
 }
 
-
 async function sendVoidMessageFromQueue() {
   if (voidMessageQueue.length > 0 && !isVoidSendingMessage) {
     isVoidSendingMessage = true;
     const message = voidMessageQueue.shift();
     try {
-      await voidBot.sendPhoto(
-        VOID_TELEGRAM_CHAT_ID,
-        message.photo,
-        message.options
-      );
+      await voidBot.sendPhoto(VOID_TELEGRAM_CHAT_ID, message.photo, message.options);
     } catch (error) {
       console.error("Error sending VOID message:", error);
     }
@@ -351,7 +325,6 @@ async function getVoidPrice() {
     return null;
   }
 }
-
 async function initializeTotalBurnedAmount() {
   try {
     const burnedBalance = await voidToken.balanceOf(BURN_ADDRESS);
@@ -362,14 +335,10 @@ async function initializeTotalBurnedAmount() {
   }
 }
 
-// Modify handleTransfer function to update total burned amount in real-time
 async function handleTransfer(from, to, value, event) {
   if (to.toLowerCase() === BURN_ADDRESS.toLowerCase()) {
     const txHash = event.transactionHash;
-    
-    if (processedTransactions.has(txHash)) {
-      return; // Skip already processed transactions silently
-    }
+    if (processedTransactions.has(txHash)) return;
     
     const amountBurned = Number(ethers.utils.formatUnits(value, VOID_TOKEN_DECIMALS));
     voidTotalBurnedAmount += amountBurned;
@@ -380,12 +349,7 @@ async function handleTransfer(from, to, value, event) {
     
     const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${amountBurned.toFixed(2)} VOID\n🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID\n🔥 Percent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
 
-    const burnMessageOptions = {
-      caption: burnMessage,
-      parse_mode: "HTML"
-    };
-
-    addToVoidBurnQueue(VOID_BURN_ANIMATION, burnMessageOptions);
+    addToVoidBurnQueue(VOID_BURN_ANIMATION, { caption: burnMessage, parse_mode: "HTML" });
     
     processedTransactions.add(txHash);
     saveProcessedTransactions();
@@ -393,37 +357,59 @@ async function handleTransfer(from, to, value, event) {
     console.log(`Burn detected: ${amountBurned.toFixed(2)} VOID, Total burned: ${voidTotalBurnedAmount.toFixed(2)} VOID`);
   }
 }
-
-
 async function handleSwapEvent(event) {
-  const txHash = event.transactionHash;
-  
-  if (processedTransactions.has(txHash)) {
-    return; // Skip already processed transactions silently
-  }
-  
-  const { recipient, amount0, amount1 } = event.args;
-  
-  const token0 = await voidPool.token0();
-  const isVoidToken0 = token0.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase();
-  
-  const voidAmount = isVoidToken0 ? -amount0 : amount1;
-  const isVoidBuy = voidAmount > 0;
-  
-  if (isVoidBuy) {
-    const formattedVoidAmount = ethers.utils.formatUnits(voidAmount.toString(), VOID_TOKEN_DECIMALS);
-    const buyerBalance = await voidToken.balanceOf(recipient);
-    
-    // Calculate USD value of the transaction
-    const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
-    
-    
-    const isArbitrage = Number(buyerBalance) < 501
-    
-    if ((isArbitrage && transactionValueUSD < 200) || (!isArbitrage && transactionValueUSD < 50)) {
-      console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)} (Arbitrage: ${isArbitrage})`);
+  try {
+    console.log('Received Swap event:', JSON.stringify(event, null, 2));
+
+    if (!event || !event.args) {
+      console.error('Invalid event structure:', event);
       return;
     }
+
+    const txHash = event.transactionHash;
+    
+    if (processedTransactions.has(txHash)) {
+      return; // Skip already processed transactions silently
+    }
+    
+    const args = event.args;
+    console.log('Event args:', args);
+
+    // Safely access properties
+    const recipient = args.recipient || args.to; // Some implementations use 'to' instead of 'recipient'
+    const amount0 = args.amount0 || args.amount0In || args.amount0Out;
+    const amount1 = args.amount1 || args.amount1In || args.amount1Out;
+    const sqrtPriceX96 = args.sqrtPriceX96;
+
+    if (!recipient || (amount0 === undefined && amount1 === undefined)) {
+      console.error('Missing critical event data:', args);
+      return;
+    }
+
+    const token0 = await voidPool.token0();
+    const isVoidToken0 = token0.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase();
+    
+    const voidAmount = isVoidToken0 ? (amount0.lt(0) ? amount0.mul(-1) : amount0) : (amount1.lt(0) ? amount1.mul(-1) : amount1);
+    const isVoidBuy = voidAmount.gt(0);
+    
+    if (isVoidBuy) {
+      const formattedVoidAmount = ethers.utils.formatUnits(voidAmount.toString(), VOID_TOKEN_DECIMALS);
+      const buyerBalance = await voidToken.balanceOf(recipient);
+      
+      // Calculate USD value of the transaction
+      const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
+      
+      // Calculate price impact (this is an approximation and may need refinement)
+      const poolFee = await voidPool.fee();
+      const priceImpact = (Number(formattedVoidAmount) * poolFee) / 1e6; // poolFee is in basis points
+      
+      const isArbitrage = Number(ethers.utils.formatUnits(buyerBalance, VOID_TOKEN_DECIMALS)) < 501 && priceImpact > 1; // 1% price impact threshold
+      
+      // Apply filters based on transaction value
+      if ((isArbitrage && transactionValueUSD < 200) || (!isArbitrage && transactionValueUSD < 50)) {
+        console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)} (Arbitrage: ${isArbitrage})`);
+        return;
+      }
     const txHash = event.transactionHash;
     const txHashLink = `https://basescan.org/tx/${txHash}`;
     const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
@@ -432,7 +418,7 @@ async function handleSwapEvent(event) {
     const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
     const marketCap = currentVoidUsdPrice * totalSupply;
     
-    const voidRank = getVoidRank(Number(buyerBalance));
+    const voidRank = getVoidRank(Number(ethers.utils.formatUnits(buyerBalance, VOID_TOKEN_DECIMALS)));
     const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
     
     const emojiCount = Math.min(Math.ceil(priceImpact * 100), 96);
@@ -462,20 +448,35 @@ ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
   }
   
   processedTransactions.add(txHash);
-  if (processedTransactions.size % 100 === 0) { // Save every 100 transactions
+  if (processedTransactions.size % 100 === 0) {
     saveProcessedTransactions();
   }
+} catch (error) {
+  console.error('Error in handleSwapEvent:', error);
+  console.error('Event that caused the error:', JSON.stringify(event, null, 2));
 }
+}
+
 function initializeWebSocket() {
-  voidPool.on('Swap', handleSwapEvent);
-  voidTokenWS.on('Transfer', handleTransfer);
-  
-  wsProvider._websocket.on('close', (code) => {
-    console.log(`WebSocket connection closed with code ${code}. Reconnecting...`);
-    setTimeout(initializeWebSocket, 1000);
+voidPool.on('Swap', (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
+  handleSwapEvent({
+    args: { sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick },
+    transactionHash: event.transactionHash
   });
-  
-  console.log('WebSocket connection established and listening for Swap and Transfer events.');
+});
+
+voidTokenWS.on('Transfer', handleTransfer);
+
+wsProvider._websocket.on('close', (code) => {
+  console.error(`WebSocket connection closed with code ${code}. Reconnecting...`);
+  setTimeout(initializeWebSocket, 1000);
+});
+
+wsProvider._websocket.on('error', (error) => {
+  console.error('WebSocket error:', error);
+});
+
+console.log('WebSocket connection established and listening for Swap and Transfer events.');
 }
 
 async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
@@ -682,39 +683,36 @@ function scheduleHourlyYangBurn() {
     });
   }, delay);
 }
+
 async function initializeAndStart() {
   try {
     console.log("Initializing combined VOID and YANG bot...");
 
     loadProcessedTransactions();
     
-    // Initialize VOID-specific processes
     await initializeTotalBurnedAmount();
     claimLoop();
 
-    // Initialize YANG-specific processes
     await updateYangTotalBurnedAmount();
     scheduleNextCall(checkYangTotalSupply, 30000);
     scheduleHourlyYangBurn();
 
-    // Initialize WebSocket connection
     initializeWebSocket();
 
-    // Start updating VOID price
     setInterval(async () => {
       const priceInfo = await getVoidPrice();
       if (priceInfo !== null) {
         currentVoidUsdPrice = priceInfo.voidPrice;
         console.log(`Updated current VOID USD price to: ${currentVoidUsdPrice}`);
       }
-    }, 30000);
+    }, 45000);
 
     console.log("Combined VOID and YANG bot started successfully!");
   } catch (error) {
     console.error("Error during initialization:", error);
-    // Implement a retry mechanism or graceful shutdown here
     setTimeout(initializeAndStart, 60000); // Retry after 1 minute
   }
 }
+
 // Start the combined bot
 initializeAndStart();
