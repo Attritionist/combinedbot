@@ -529,7 +529,11 @@ async function handleSwapEvent(event) {
       return;
     }
 
-    const fromAddress = event.args.sender;
+    // Get the transaction receipt to find the actual 'from' address
+    const txReceipt = await provider.getTransactionReceipt(txHash);
+    const fromAddress = txReceipt.from;
+    console.log(`Actual buyer address: ${fromAddress}`);
+
     const amount0 = event.args.amount0;
     const amount1 = event.args.amount1;
 
@@ -540,12 +544,19 @@ async function handleSwapEvent(event) {
     const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
     
-    if (transactionValueUSD < 5) {
-      console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)}`);
-      return;
+    if (isArbitrage) {
+      if (transactionValueUSD < 200) {
+        console.log(`Skipping low-value arbitrage transaction: $${transactionValueUSD.toFixed(2)}`);
+        return;
+      }
+    } else {
+      if (transactionValueUSD < 50) {
+        console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)}`);
+        return;
+      }
     }
 
-    // Check the balance of the "From" address
+    // Check the balance of the actual 'from' address
     const fromBalance = await voidToken.balanceOf(fromAddress);
     const formattedFromBalance = Number(ethers.utils.formatUnits(fromBalance, VOID_TOKEN_DECIMALS));
     console.log(`From address (${fromAddress}) balance: ${formattedFromBalance.toFixed(2)} VOID`);
@@ -565,7 +576,7 @@ async function handleSwapEvent(event) {
     
     const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
     
-    const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 100), 48); // Max 48 pairs (96 emojis)
+    const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 50), 48); // Max 48 pairs (96 emojis)
     const emojiString = isArbitrage ? "🤖🔩".repeat(emojiPairCount) : "🟣🔥".repeat(emojiPairCount);
 
     const txHashLink = `https://basescan.org/tx/${txHash}`;
