@@ -374,7 +374,12 @@ async function handleSwapEvent(event) {
     const amount1 = args.amount1;
     const txHash = event.transactionHash;
 
-    if (!recipient || !amount0 || !amount1) {
+    console.log(`Recipient: ${recipient}`);
+    console.log(`Amount0: ${amount0.toString()}`);
+    console.log(`Amount1: ${amount1.toString()}`);
+    console.log(`Transaction Hash: ${txHash}`);
+
+    if (!recipient || amount0 === undefined || amount1 === undefined) {
       console.error('Missing critical event data:', args);
       return;
     }
@@ -385,18 +390,36 @@ async function handleSwapEvent(event) {
     }
 
     const token0 = await voidPool.token0();
+    console.log(`Token0: ${token0}`);
+    console.log(`VOID_CONTRACT_ADDRESS: ${VOID_CONTRACT_ADDRESS}`);
     const isVoidToken0 = token0.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase();
+    console.log(`Is VOID token0: ${isVoidToken0}`);
     
-    const voidAmount = isVoidToken0 ? amount0 : amount1.mul(-1);
+    const voidAmount = isVoidToken0 ? amount0.mul(-1) : amount1;
+    console.log(`VOID amount: ${voidAmount.toString()}`);
     const isVoidBuy = voidAmount.gt(0);
+    console.log(`Is VOID buy: ${isVoidBuy}`);
     
     if (isVoidBuy) {
       const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
-      const buyerBalance = await voidToken.balanceOf(recipient);
+      console.log(`Formatted VOID amount: ${formattedVoidAmount}`);
+
+      // Fetch buyer's balance before and after the transaction
+      const buyerBalanceBefore = await voidToken.balanceOf(recipient, { blockTag: event.blockNumber - 1 });
+      const buyerBalanceAfter = await voidToken.balanceOf(recipient);
       
+      console.log(`Buyer (${recipient}) balance before: ${ethers.utils.formatUnits(buyerBalanceBefore, VOID_TOKEN_DECIMALS)}`);
+      console.log(`Buyer (${recipient}) balance after: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}`);
+
+      const balanceChange = buyerBalanceAfter.sub(buyerBalanceBefore);
+      console.log(`Balance change: ${ethers.utils.formatUnits(balanceChange, VOID_TOKEN_DECIMALS)}`);
+
       const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
+      console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
       
-      const isArbitrage = Number(ethers.utils.formatUnits(buyerBalance, VOID_TOKEN_DECIMALS)) < 501
+      // Adjust arbitrage detection logic
+      const isArbitrage = balanceChange.lt(ethers.utils.parseUnits("10", VOID_TOKEN_DECIMALS))
+      console.log(`Is arbitrage: ${isArbitrage}`);
       
       if ((isArbitrage && transactionValueUSD < 200) || (!isArbitrage && transactionValueUSD < 50)) {
         console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)} (Arbitrage: ${isArbitrage})`);
@@ -410,7 +433,7 @@ async function handleSwapEvent(event) {
       const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
       const marketCap = currentVoidUsdPrice * totalSupply;
       
-      const voidRank = getVoidRank(Number(ethers.utils.formatUnits(buyerBalance, VOID_TOKEN_DECIMALS)));
+      const voidRank = getVoidRank(Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)));
       const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
       
       const emojiCount = Math.min(Math.ceil(transactionValueUSD * 100), 96);
@@ -424,7 +447,7 @@ async function handleSwapEvent(event) {
 🔥 Percent Burned: ${percentBurned.toFixed(3)}%
 <a href="${chartLink}">📈 Chart</a>
 <a href="${txHashLink}">💱 TX Hash</a>
-⚖️ Remaining VOID Balance: ${ethers.utils.formatUnits(buyerBalance, VOID_TOKEN_DECIMALS)}
+⚖️ Remaining VOID Balance: ${ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)}
 🛡️ VOID Rank: ${voidRank}
 🚰 Pool: VOID/ETH
 ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
@@ -434,9 +457,13 @@ ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
         parse_mode: "HTML",
       };
 
-      sendVoidPhotoMessage(imageUrl, messageOptions);
+      console.log('Sending VOID photo message...');
+      await sendVoidPhotoMessage(imageUrl, messageOptions);
+      console.log('VOID photo message sent successfully.');
       
       console.log(`VOID Buy detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), Buyer: ${recipient}, Is Arbitrage: ${isArbitrage}`);
+    } else {
+      console.log('This is not a VOID buy transaction.');
     }
     
     processedTransactions.add(txHash);
