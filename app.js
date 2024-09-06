@@ -600,7 +600,7 @@ async function handleSwapEvent(event) {
     const voidRank = getVoidRank(Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)));
     const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
     
-    const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 100), 48); // Max 48 pairs (96 emojis)
+    const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 50), 48); // Max 48 pairs (96 emojis)
     const emojiString = isArbitrage 
       ? "🤖🔩".repeat(emojiPairCount)
       : "🟣🔥".repeat(emojiPairCount);
@@ -616,7 +616,7 @@ ${isArbitrage ? '🤖 Arbitrage' : '💸 Bought'} ${Number(formattedVoidAmount).
 🔥 Percent Burned: ${percentBurned.toFixed(3)}%
 <a href="${chartLink}">📈 Chart</a>
 <a href="${txHashLink}">💱 TX Hash</a>
-⚖️ Remaining VOID Balance: ${Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)).toFixed(2)}
+${isArbitrage ? '' : `⚖️ Remaining VOID Balance: ${Number(ethers.utils.formatUnits(buyerBalanceAfter, VOID_TOKEN_DECIMALS)).toFixed(2)}`}
 🛡️ VOID Rank: ${voidRank}
 🚰 Pool: VOID/ETH
 ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
@@ -641,7 +641,6 @@ ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
     console.error('Event that caused the error:', JSON.stringify(event, null, 2));
   }
 }
-
 function initializeWebSocket() {
 voidPool.on('Swap', (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
   handleSwapEvent({
