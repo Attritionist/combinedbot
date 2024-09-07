@@ -446,7 +446,7 @@ async function sendYangBurnFromQueue() {
     setTimeout(() => {
       isYangSendingMessage = false;
       sendYangBurnFromQueue();
-    }, 500);
+    }, 1000);
   }
 }
 
@@ -467,7 +467,7 @@ async function sendVoidMessageFromQueue() {
     setTimeout(() => {
       isVoidSendingMessage = false;
       sendVoidMessageFromQueue();
-    }, 500);
+    }, 1000);
   }
 }
 
@@ -628,7 +628,7 @@ voidTokenWS.on('Transfer', handleTransfer);
 
 wsProvider._websocket.on('close', (code) => {
   console.error(`WebSocket connection closed with code ${code}. Reconnecting...`);
-  setTimeout(initializeWebSocket, 1000);
+  setTimeout(initializeWebSocket, 2000);
 });
 
 wsProvider._websocket.on('error', (error) => {
@@ -864,7 +864,7 @@ async function initializeAndStart() {
         currentVoidUsdPrice = priceInfo.voidPrice;
         console.log(`Updated current VOID USD price to: ${currentVoidUsdPrice}`);
       }
-    }, 45000);
+    }, 60000);
 
     console.log("Combined VOID and YANG bot started successfully!");
   } catch (error) {
