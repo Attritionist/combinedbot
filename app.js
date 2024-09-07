@@ -544,18 +544,6 @@ async function handleSwapEvent(event) {
     const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
     
-    if (isArbitrage) {
-      if (transactionValueUSD < 200) {
-        console.log(`Skipping low-value arbitrage transaction: $${transactionValueUSD.toFixed(2)}`);
-        return;
-      }
-    } else {
-      if (transactionValueUSD < 50) {
-        console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)}`);
-        return;
-      }
-    }
-
     // Check the balance of the actual 'from' address
     const fromBalance = await voidToken.balanceOf(fromAddress);
     const formattedFromBalance = Number(ethers.utils.formatUnits(fromBalance, VOID_TOKEN_DECIMALS));
@@ -569,7 +557,17 @@ async function handleSwapEvent(event) {
       buyerBalanceAfter = fromBalance;
       voidRank = getVoidRank(formattedFromBalance);
     }
-
+    if (isArbitrage) {
+      if (transactionValueUSD < 200) {
+        console.log(`Skipping low-value arbitrage transaction: $${transactionValueUSD.toFixed(2)}`);
+        return;
+      }
+    } else {
+      if (transactionValueUSD < 50) {
+        console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)}`);
+        return;
+      }
+    }
     const totalSupply = VOID_INITIAL_SUPPLY - voidTotalBurnedAmount;
     const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
     const marketCap = currentVoidUsdPrice * totalSupply;
