@@ -534,36 +534,12 @@ async function handleSwapEvent(event) {
     const fromAddress = txReceipt.from;
     console.log(`Actual buyer address: ${fromAddress}`);
 
-    // Fetch all logs for this transaction
-    const logs = await provider.getLogs({
-      fromBlock: txReceipt.blockNumber,
-      toBlock: txReceipt.blockNumber,
-      address: VOID_CONTRACT_ADDRESS
-    });
+    const amount0 = event.args.amount0;
+    const amount1 = event.args.amount1;
 
-    // Sum up all VOID transfers to the buyer
-    let totalVoidAmount = ethers.BigNumber.from(0);
-    for (const log of logs) {
-      try {
-        const parsedLog = voidToken.interface.parseLog(log);
-        if (parsedLog.name === 'Transfer' && parsedLog.args.to.toLowerCase() === fromAddress.toLowerCase()) {
-          if (parsedLog.args.value) {
-            totalVoidAmount = totalVoidAmount.add(parsedLog.args.value);
-          }
-        }
-      } catch (error) {
-        console.error('Error parsing log:', error);
-        // Continue to the next log if there's an error
-        continue;
-      }
-    }
-
-    if (totalVoidAmount.isZero()) {
-      console.log('No VOID transfers found in this transaction');
-      return;
-    }
-
-    const formattedVoidAmount = ethers.utils.formatUnits(totalVoidAmount, VOID_TOKEN_DECIMALS);
+    // Determine which amount is VOID based on whether it's negative (sold) or positive (bought)
+    const voidAmount = amount0.lt(0) ? amount0.abs() : amount1.abs();
+    const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
     
     const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
@@ -640,7 +616,6 @@ ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
     console.error('Event that caused the error:', JSON.stringify(event, null, 2));
   }
 }
-
 function initializeWebSocket() {
   voidPool.on('Swap', (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
     handleSwapEvent({
