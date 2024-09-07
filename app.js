@@ -534,12 +534,23 @@ async function handleSwapEvent(event) {
     const fromAddress = txReceipt.from;
     console.log(`Actual buyer address: ${fromAddress}`);
 
-    const amount0 = event.args.amount0;
-    const amount1 = event.args.amount1;
+    // Fetch all logs for this transaction
+    const logs = await provider.getLogs({
+      fromBlock: txReceipt.blockNumber,
+      toBlock: txReceipt.blockNumber,
+      address: VOID_CONTRACT_ADDRESS
+    });
 
-    // Determine which amount is VOID based on whether it's negative (sold) or positive (bought)
-    const voidAmount = amount0.lt(0) ? amount0.abs() : amount1.abs();
-    const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
+    // Sum up all VOID transfers to the buyer
+    let totalVoidAmount = ethers.BigNumber.from(0);
+    for (const log of logs) {
+      const parsedLog = voidToken.interface.parseLog(log);
+      if (parsedLog.name === 'Transfer' && parsedLog.args.to.toLowerCase() === fromAddress.toLowerCase()) {
+        totalVoidAmount = totalVoidAmount.add(parsedLog.args.value);
+      }
+    }
+
+    const formattedVoidAmount = ethers.utils.formatUnits(totalVoidAmount, VOID_TOKEN_DECIMALS);
     
     const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
