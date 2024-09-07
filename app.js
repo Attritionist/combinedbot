@@ -543,7 +543,7 @@ async function handleSwapEvent(event) {
     
     const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
-    
+
     // Check the balance of the actual 'from' address
     const fromBalance = await voidToken.balanceOf(fromAddress);
     const formattedFromBalance = Number(ethers.utils.formatUnits(fromBalance, VOID_TOKEN_DECIMALS));
@@ -551,12 +551,7 @@ async function handleSwapEvent(event) {
 
     const isArbitrage = formattedFromBalance < 500;
 
-    let buyerAddress, buyerBalanceAfter, voidRank;
-    if (!isArbitrage) {
-      buyerAddress = fromAddress;
-      buyerBalanceAfter = fromBalance;
-      voidRank = getVoidRank(formattedFromBalance);
-    }
+    // Apply different thresholds for arbitrage and normal transactions
     if (isArbitrage) {
       if (transactionValueUSD < 200) {
         console.log(`Skipping low-value arbitrage transaction: $${transactionValueUSD.toFixed(2)}`);
@@ -568,13 +563,21 @@ async function handleSwapEvent(event) {
         return;
       }
     }
+
+    let buyerAddress, buyerBalanceAfter, voidRank;
+    if (!isArbitrage) {
+      buyerAddress = fromAddress;
+      buyerBalanceAfter = fromBalance;
+      voidRank = getVoidRank(formattedFromBalance);
+    }
+
     const totalSupply = VOID_INITIAL_SUPPLY - voidTotalBurnedAmount;
     const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
     const marketCap = currentVoidUsdPrice * totalSupply;
     
     const imageUrl = isArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(voidRank);
     
-    const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 50), 48); // Max 48 pairs (96 emojis)
+    const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 100), 48); // Max 48 pairs (96 emojis)
     const emojiString = isArbitrage ? "🤖🔩".repeat(emojiPairCount) : "🟣🔥".repeat(emojiPairCount);
 
     const txHashLink = `https://basescan.org/tx/${txHash}`;
