@@ -544,10 +544,23 @@ async function handleSwapEvent(event) {
     // Sum up all VOID transfers to the buyer
     let totalVoidAmount = ethers.BigNumber.from(0);
     for (const log of logs) {
-      const parsedLog = voidToken.interface.parseLog(log);
-      if (parsedLog.name === 'Transfer' && parsedLog.args.to.toLowerCase() === fromAddress.toLowerCase()) {
-        totalVoidAmount = totalVoidAmount.add(parsedLog.args.value);
+      try {
+        const parsedLog = voidToken.interface.parseLog(log);
+        if (parsedLog.name === 'Transfer' && parsedLog.args.to.toLowerCase() === fromAddress.toLowerCase()) {
+          if (parsedLog.args.value) {
+            totalVoidAmount = totalVoidAmount.add(parsedLog.args.value);
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing log:', error);
+        // Continue to the next log if there's an error
+        continue;
       }
+    }
+
+    if (totalVoidAmount.isZero()) {
+      console.log('No VOID transfers found in this transaction');
+      return;
     }
 
     const formattedVoidAmount = ethers.utils.formatUnits(totalVoidAmount, VOID_TOKEN_DECIMALS);
