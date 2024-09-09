@@ -650,6 +650,40 @@ async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
       console.log(`[${new Date().toISOString()}] Claim transaction sent: ${claimTx.hash}`);
       const claimReceipt = await claimTx.wait();
       console.log(`[${new Date().toISOString()}] Claim transaction confirmed. Gas used: ${claimReceipt.gasUsed.toString()}`);
+
+      // Find the burn event (transfer to null address)
+      const burnEvent = claimReceipt.logs.find(log => 
+        log.topics[0] === ethers.utils.id("Transfer(address,address,uint256)") &&
+        log.topics[2].toLowerCase() === ethers.utils.hexZeroPad(ethers.constants.AddressZero, 32).toLowerCase()
+      );
+
+      if (burnEvent) {
+        const amountBurned = ethers.BigNumber.from(burnEvent.data);
+        const formattedAmount = ethers.utils.formatUnits(amountBurned, VOID_TOKEN_DECIMALS);
+        
+        // Update total burned amount
+        voidTotalBurnedAmount += Number(formattedAmount);
+        
+        // Calculate percentage burned
+        const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
+
+        // Prepare burn message
+        const txHashLink = `https://basescan.org/tx/${claimTx.hash}`;
+        const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
+        const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${amountBurned.toFixed(2)} VOID\n🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID\n🔥 Percent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
+
+        const burnMessageOptions = {
+          caption: burnMessage,
+          parse_mode: "HTML"
+        };
+
+        // Send burn message
+        await addToVoidBurnQueue(VOID_BURN_ANIMATION, burnMessageOptions);
+        console.log(`[${new Date().toISOString()}] Burn message queued for sending.`);
+      } else {
+        console.log(`[${new Date().toISOString()}] Burn event not found in transaction logs.`);
+      }
+
       return claimReceipt;
     } catch (error) {
       console.error(`[${new Date().toISOString()}] Error claiming VOID (attempt ${retries + 1}):`, error.message);
