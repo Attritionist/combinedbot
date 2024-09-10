@@ -842,6 +842,14 @@ function scheduleHourlyYangBurn() {
     });
   }, delay);
 }
+function reinitializeWebSocket() {
+  console.log('Reinitializing WebSocket connection...');
+  wsProvider._websocket.terminate();
+  initializeWebSocket();
+}
+
+// Call this function every 15 minutes
+setInterval(reinitializeWebSocket, 15 * 60 * 1000);
 
 async function initializeAndStart() {
   try {
