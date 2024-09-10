@@ -3,7 +3,7 @@ const TelegramBot = require("node-telegram-bot-api");
 const ethers = require('ethers');
 const fs = require('fs');
 const WebSocket = require('ws');
-const { WebSocketProvider } = require('ethers/providers');
+const { WebSocketProvider } = require('ethers');
 require("dotenv").config();
 
 // Environment variables
