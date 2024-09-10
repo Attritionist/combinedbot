@@ -3,7 +3,6 @@ const TelegramBot = require("node-telegram-bot-api");
 const ethers = require('ethers');
 const fs = require('fs');
 const WebSocket = require('ws');
-const { WebSocketProvider } = require('ethers');
 require("dotenv").config();
 
 // Environment variables
@@ -236,8 +235,7 @@ let isYangSendingMessage = false;
 const processedTransactionsFilePath = "processed_transactions.json";
 let processedTransactions = new Set();
 
-// Custom WebSocketProvider
-class CustomWebSocketProvider extends WebSocketProvider {
+class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
   constructor(url, network) {
     super(url, network);
     this.heartbeatInterval = null;
@@ -676,7 +674,7 @@ ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
 }
 function initializeWebSocket() {
   try {
-    const customWsProvider = new CustomWebSocketProvider(WSS_ENDPOINT);
+    const customWsProvider = new ethers.providers.WebSocketProvider(WSS_ENDPOINT);
     
     const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, customWsProvider);
     const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, customWsProvider);
