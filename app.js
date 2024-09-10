@@ -417,6 +417,11 @@ async function handleSwapEvent(event) {
     const txHash = event.transactionHash;
     console.log(`Transaction Hash: ${txHash}`);
 
+    if (!txHash) {
+      console.log('No transaction hash found in the event. Skipping processing.');
+      return;
+    }
+
     if (processedTransactions.has(txHash)) {
       console.log(`Already processed transaction: ${txHash}`);
       return;
@@ -424,6 +429,10 @@ async function handleSwapEvent(event) {
 
     // Get the transaction receipt to find the actual 'from' address
     const txReceipt = await provider.getTransactionReceipt(txHash);
+    if (!txReceipt) {
+      console.log(`No transaction receipt found for hash: ${txHash}. Skipping processing.`);
+      return;
+    }
     const fromAddress = txReceipt.from;
     console.log(`Actual buyer address: ${fromAddress}`);
 
