@@ -2,6 +2,8 @@ const axios = require("axios");
 const TelegramBot = require("node-telegram-bot-api");
 const ethers = require('ethers');
 const fs = require('fs');
+const WebSocket = require('ws');
+const { WebSocketProvider } = require('@ethersproject/providers');
 require("dotenv").config();
 
 // Environment variables
@@ -34,7 +36,6 @@ const yangBot = new TelegramBot(YANG_TELEGRAM_BOT_TOKEN, { polling: true });
 
 // Initialize providers and contracts
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
-const wsProvider = new ethers.providers.WebSocketProvider(WSS_ENDPOINT);
 const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
 
 const ERC20_ABI = [
@@ -223,10 +224,8 @@ const YANG_ABI = [
 const voidContract = new ethers.Contract(ENTROPY_ADDRESS, VOID_ABI, wallet);
 const yangContract = new ethers.Contract(YANG_CONTRACT_ADDRESS, YANG_ABI, wallet);
 const voidToken = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, provider);
-const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, wsProvider);
-const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, wsProvider);
 
-// Global variables
+
 let voidTotalBurnedAmount = 0;
 let yangTotalBurnedAmount = 0;
 let currentVoidUsdPrice = null;
@@ -237,6 +236,66 @@ let isYangSendingMessage = false;
 const processedTransactionsFilePath = "processed_transactions.json";
 let processedTransactions = new Set();
 
+// Custom WebSocketProvider
+class CustomWebSocketProvider extends WebSocketProvider {
+  constructor(url, network) {
+    super(url, network);
+    this.heartbeatInterval = null;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
+    this.reconnectDelay = 5000;
+    this.setupHeartbeat();
+    this.setupReconnection();
+  }
+
+  setupHeartbeat() {
+    this.heartbeatInterval = setInterval(() => {
+      if (this._websocket.readyState === WebSocket.OPEN) {
+        this._websocket.ping();
+      }
+    }, 30000); // Send a ping every 30 seconds
+  }
+
+  setupReconnection() {
+    this._websocket.on('close', (code) => {
+      console.error(`WebSocket connection closed with code ${code}. Attempting to reconnect...`);
+      this.reconnect();
+    });
+
+    this._websocket.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      this.reconnect();
+    });
+  }
+
+  async reconnect() {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('Max reconnection attempts reached. Reinitializing the entire WebSocket setup...');
+      this.reconnectAttempts = 0;
+      await initializeWebSocket();
+      return;
+    }
+
+    this.reconnectAttempts++;
+    console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+
+    setTimeout(() => {
+      try {
+        this._websocket = new WebSocket(this.connection.url);
+        this.setupHeartbeat();
+        this.setupReconnection();
+      } catch (error) {
+        console.error('Error during reconnection:', error);
+        this.reconnect();
+      }
+    }, this.reconnectDelay * this.reconnectAttempts);
+  }
+
+  destroy() {
+    clearInterval(this.heartbeatInterval);
+    super.destroy();
+  }
+}
 // Utility functions
 function loadProcessedTransactions() {
   try {
@@ -496,27 +555,26 @@ async function initializeTotalBurnedAmount() {
 }
 
 async function handleTransfer(from, to, value, event) {
-  if (to.toLowerCase() === BURN_ADDRESS.toLowerCase()) {
-    const txHash = event.transactionHash;
-    if (processedTransactions.has(txHash)) return;
-    
-    const amountBurned = Number(ethers.utils.formatUnits(value, VOID_TOKEN_DECIMALS));
-    voidTotalBurnedAmount += amountBurned;
-    
-    const txHashLink = `https://basescan.org/tx/${txHash}`;
-    const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
-    const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
-    
-    const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${amountBurned.toFixed(2)} VOID\n🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID\n🔥 Percent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
+  const txHash = event.transactionHash;
+  if (processedTransactions.has(txHash)) return;
+  
+  const amountBurned = Number(ethers.utils.formatUnits(value, VOID_TOKEN_DECIMALS));
+  voidTotalBurnedAmount += amountBurned;
+  
+  const txHashLink = `https://basescan.org/tx/${txHash}`;
+  const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
+  const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
+  
+  const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${amountBurned.toFixed(2)} VOID\n🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID\n🔥 Percent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
 
-    addToVoidBurnQueue(VOID_BURN_ANIMATION, { caption: burnMessage, parse_mode: "HTML" });
-    
-    processedTransactions.add(txHash);
-    saveProcessedTransactions();
+  addToVoidBurnQueue(VOID_BURN_ANIMATION, { caption: burnMessage, parse_mode: "HTML" });
+  
+  processedTransactions.add(txHash);
+  saveProcessedTransactions();
 
-    console.log(`Burn detected: ${amountBurned.toFixed(2)} VOID, Total burned: ${voidTotalBurnedAmount.toFixed(2)} VOID`);
-  }
+  console.log(`Burn detected: ${amountBurned.toFixed(2)} VOID, Total burned: ${voidTotalBurnedAmount.toFixed(2)} VOID`);
 }
+
 async function handleSwapEvent(event) {
   try {
     console.log('Received Swap event:', JSON.stringify(event, null, 2));
@@ -617,25 +675,39 @@ ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
   }
 }
 function initializeWebSocket() {
-  voidPool.on('Swap', (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
-    handleSwapEvent({
-      args: { sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick },
-      transactionHash: event.transactionHash
+  try {
+    const customWsProvider = new CustomWebSocketProvider(WSS_ENDPOINT);
+    
+    const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, customWsProvider);
+    const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, customWsProvider);
+
+    voidPool.on('Swap', (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
+      handleSwapEvent({
+        args: { sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick },
+        transactionHash: event.transactionHash
+      });
     });
-  });
 
-voidTokenWS.on('Transfer', handleTransfer);
+    voidTokenWS.on('Transfer', (from, to, value, event) => {
+      if (to.toLowerCase() === BURN_ADDRESS.toLowerCase()) {
+        handleTransfer(from, to, value, event);
+      }
+    });
 
-wsProvider._websocket.on('close', (code) => {
-  console.error(`WebSocket connection closed with code ${code}. Reconnecting...`);
-  setTimeout(initializeWebSocket, 2000);
-});
+    console.log('WebSocket connection established and listening for Swap and Transfer (to burn address) events.');
 
-wsProvider._websocket.on('error', (error) => {
-  console.error('WebSocket error:', error);
-});
+    // Periodic check for WebSocket health
+    setInterval(() => {
+      if (customWsProvider._websocket.readyState !== WebSocket.OPEN) {
+        console.log('WebSocket connection is not open. Attempting to reconnect...');
+        customWsProvider.reconnect();
+      }
+    }, 60000); // Check every minute
 
-console.log('WebSocket connection established and listening for Swap and Transfer events.');
+  } catch (error) {
+    console.error('Error initializing WebSocket:', error);
+    setTimeout(initializeWebSocket, 5000); // Retry after 5 seconds
+  }
 }
 
 async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
