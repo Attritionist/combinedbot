@@ -3,7 +3,6 @@ const TelegramBot = require("node-telegram-bot-api");
 const ethers = require('ethers');
 const fs = require('fs');
 require("dotenv").config();
-const WebSocket = require('ws');
 
 // Environment variables
 const VOID_TELEGRAM_CHAT_ID = process.env.VOID_TELEGRAM_CHAT_ID;
@@ -618,58 +617,27 @@ ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
   }
 }
 function initializeWebSocket() {
-  const connect = () => {
-    console.log('Attempting to connect WebSocket...');
-    
-    wsProvider._websocket.on('open', () => {
-      console.log('WebSocket connection established.');
-      
-      voidPool.on('Swap', (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
-        console.log('Swap event received:', event);
-        handleSwapEvent({
-          args: { sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick },
-          transactionHash: event.transactionHash
-        });
-      });
-
-      voidTokenWS.on('Transfer', (from, to, value, event) => {
-        console.log('Transfer event received:', event);
-        handleTransfer(from, to, value, event);
-      });
+  voidPool.on('Swap', (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
+    handleSwapEvent({
+      args: { sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick },
+      transactionHash: event.transactionHash
     });
+  });
 
-    wsProvider._websocket.on('close', (code) => {
-      console.error(`WebSocket connection closed with code ${code}. Reconnecting...`);
-      setTimeout(connect, 5000);
-    });
+voidTokenWS.on('Transfer', handleTransfer);
 
-    wsProvider._websocket.on('error', (error) => {
-      console.error('WebSocket error:', error);
-    });
-  };
+wsProvider._websocket.on('close', (code) => {
+  console.error(`WebSocket connection closed with code ${code}. Reconnecting...`);
+  setTimeout(initializeWebSocket, 2000);
+});
 
-  connect();
+wsProvider._websocket.on('error', (error) => {
+  console.error('WebSocket error:', error);
+});
+
+console.log('WebSocket connection established and listening for Swap and Transfer events.');
 }
-function checkWebSocketConnection() {
-  if (wsProvider._websocket.readyState !== WebSocket.OPEN) {
-    console.log('WebSocket not connected. Reinitializing...');
-    initializeWebSocket();
-  } else {
-    console.log('WebSocket connection is active.');
-  }
-}
-async function checkForRecentBurns() {
-  const latestBlock = await provider.getBlockNumber();
-  const fromBlock = latestBlock - 10; // Check last 10 blocks
 
-  const burnFilter = voidToken.filters.Transfer(null, BURN_ADDRESS);
-  const events = await voidToken.queryFilter(burnFilter, fromBlock);
-
-  for (const event of events) {
-    await handleTransfer(event.args.from, event.args.to, event.args.value, event);
-  }
-}
-setInterval(checkWebSocketConnection, 5 * 60 * 1000); // Check every 5 minutes
 async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
   let retries = 0;
   while (retries < maxRetries) {
@@ -682,46 +650,6 @@ async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
       console.log(`[${new Date().toISOString()}] Claim transaction sent: ${claimTx.hash}`);
       const claimReceipt = await claimTx.wait();
       console.log(`[${new Date().toISOString()}] Claim transaction confirmed. Gas used: ${claimReceipt.gasUsed.toString()}`);
-
-      console.log('Transaction receipt:', JSON.stringify(claimReceipt, null, 2));
-
-      // Find the burn event (transfer to null address)
-      const burnEvent = claimReceipt.logs.find(log => 
-        log.topics[0] === ethers.utils.id("Transfer(address,address,uint256)") &&
-        log.topics[2].toLowerCase() === ethers.utils.hexZeroPad(ethers.constants.AddressZero, 32).toLowerCase()
-      );
-
-      if (burnEvent) {
-        const amountBurned = ethers.BigNumber.from(burnEvent.data);
-        const formattedAmount = ethers.utils.formatUnits(amountBurned, VOID_TOKEN_DECIMALS);
-        
-        // Update total burned amount
-        voidTotalBurnedAmount += Number(formattedAmount);
-        
-        // Calculate percentage burned
-        const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
-
-        // Prepare burn message
-        const txHashLink = `https://basescan.org/tx/${claimTx.hash}`;
-        const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
-        const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${formattedAmount.toFixed(2)} VOID\n🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID\n🔥 Percent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
-
-        const burnMessageOptions = {
-          caption: burnMessage,
-          parse_mode: "HTML"
-        };
-
-        // Send burn message
-        await addToVoidBurnQueue(VOID_BURN_ANIMATION, burnMessageOptions);
-        console.log(`[${new Date().toISOString()}] Burn message queued for sending.`);
-      } else {
-        console.log(`[${new Date().toISOString()}] Burn event not found in transaction logs.`);
-        
-        // If we didn't find the burn event in the logs, check for recent burns
-        console.log(`[${new Date().toISOString()}] Checking for recent burns...`);
-        await checkForRecentBurns();
-      }
-
       return claimReceipt;
     } catch (error) {
       console.error(`[${new Date().toISOString()}] Error claiming VOID (attempt ${retries + 1}):`, error.message);
