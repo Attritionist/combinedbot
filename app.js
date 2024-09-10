@@ -703,7 +703,7 @@ async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
         // Prepare burn message
         const txHashLink = `https://basescan.org/tx/${claimTx.hash}`;
         const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
-        const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${formattedAmount} VOID\n🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID\n🔥 Percent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
+        const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${formattedAmount.toFixed(2)} VOID\n🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID\n🔥 Percent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
 
         const burnMessageOptions = {
           caption: burnMessage,
