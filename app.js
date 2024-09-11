@@ -614,8 +614,7 @@ async function handleSwapEvent(event) {
       console.log(`Skipping VOID sell transaction`);
       return;
     }
-
-    // Check the balance of the actual 'from' address
+   // Check the balance of the actual 'from' address
     const fromBalance = await voidToken.balanceOf(fromAddress);
     const formattedFromBalance = Number(ethers.utils.formatUnits(fromBalance, VOID_TOKEN_DECIMALS));
     console.log(`From address (${fromAddress}) balance: ${formattedFromBalance.toFixed(2)} VOID`);
