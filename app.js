@@ -585,23 +585,29 @@ async function handleSwapEvent(event) {
       return;
     }
 
-    // Get the transaction receipt to find the actual 'from' address
     const txReceipt = await provider.getTransactionReceipt(txHash);
     const fromAddress = txReceipt.from;
-    console.log(`Actual buyer address: ${fromAddress}`);
+    console.log(`Actual trader address: ${fromAddress}`);
 
     const amount0 = event.args.amount0;
     const amount1 = event.args.amount1;
 
-    // VOID is always amount0 in this case
+    const isVoidBuy = amount0.gt(0);
     const voidAmount = amount0.abs();
     const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
     
     console.log(`VOID amount: ${formattedVoidAmount}`);
+    console.log(`Is VOID Buy: ${isVoidBuy}`);
     console.log(`Current VOID USD price: ${currentVoidUsdPrice}`);
 
     const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
+
+    // Only proceed if it's a buy
+    if (!isVoidBuy) {
+      console.log(`Skipping VOID sell transaction`);
+      return;
+    }
 
     // Check the balance of the actual 'from' address
     const fromBalance = await voidToken.balanceOf(fromAddress);
