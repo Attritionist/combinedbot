@@ -665,14 +665,7 @@ ${!isArbitrage ? `⚖️ Remaining VOID Balance: ${formattedFromBalance.toFixed(
 🛡️ VOID Rank: ${voidRank}` : ''}
 🚰 Pool: VOID/ETH
 ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
-    
-console.log('Debug information:');
-console.log(`isArbitrage: ${isArbitrage}`);
-console.log(`formattedVoidAmount: ${formattedVoidAmount}`);
-console.log(`transactionValueUSD: ${transactionValueUSD}`);
-console.log(`currentVoidUsdPrice: ${currentVoidUsdPrice}`);
-console.log(`formattedFromBalance: ${formattedFromBalance}`);
-console.log(`voidRank: ${voidRank}`);
+
     const messageOptions = {
       caption: message,
       parse_mode: "HTML",
