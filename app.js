@@ -587,21 +587,27 @@ async function handleSwapEvent(event) {
 
     const txReceipt = await provider.getTransactionReceipt(txHash);
     const fromAddress = txReceipt.from;
-    console.log(`Actual trader address: ${fromAddress}`);
+    const recipient = event.args.recipient;
+    console.log(`Transaction initiator: ${fromAddress}`);
+    console.log(`Recipient: ${recipient}`);
 
     const amount0 = event.args.amount0;
     const amount1 = event.args.amount1;
 
-    const isVoidBuy = amount0.gt(0);
     const voidAmount = amount0.abs();
     const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
     
     console.log(`VOID amount: ${formattedVoidAmount}`);
-    console.log(`Is VOID Buy: ${isVoidBuy}`);
+    console.log(`amount0: ${amount0.toString()}`);
+    console.log(`amount1: ${amount1.toString()}`);
     console.log(`Current VOID USD price: ${currentVoidUsdPrice}`);
 
     const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
+
+    // Determine if it's a buy based on whether the recipient is the transaction initiator
+    const isVoidBuy = recipient.toLowerCase() === fromAddress.toLowerCase();
+    console.log(`Is VOID Buy: ${isVoidBuy}`);
 
     // Only proceed if it's a buy
     if (!isVoidBuy) {
