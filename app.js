@@ -593,10 +593,13 @@ async function handleSwapEvent(event) {
     const amount0 = event.args.amount0;
     const amount1 = event.args.amount1;
 
-    // Determine which amount is VOID based on whether it's negative (sold) or positive (bought)
-    const voidAmount = amount0.lt(0) ? amount0.abs() : amount1.abs();
+    // VOID is always amount0 in this case
+    const voidAmount = amount0.abs();
     const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
     
+    console.log(`VOID amount: ${formattedVoidAmount}`);
+    console.log(`Current VOID USD price: ${currentVoidUsdPrice}`);
+
     const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
 
@@ -651,7 +654,14 @@ ${!isArbitrage ? `⚖️ Remaining VOID Balance: ${formattedFromBalance.toFixed(
 🛡️ VOID Rank: ${voidRank}` : ''}
 🚰 Pool: VOID/ETH
 ${isArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
-
+    
+console.log('Debug information:');
+console.log(`isArbitrage: ${isArbitrage}`);
+console.log(`formattedVoidAmount: ${formattedVoidAmount}`);
+console.log(`transactionValueUSD: ${transactionValueUSD}`);
+console.log(`currentVoidUsdPrice: ${currentVoidUsdPrice}`);
+console.log(`formattedFromBalance: ${formattedFromBalance}`);
+console.log(`voidRank: ${voidRank}`);
     const messageOptions = {
       caption: message,
       parse_mode: "HTML",
