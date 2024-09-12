@@ -660,11 +660,10 @@ ${isLikelyArbitrage ? '🤖 Arbitrage' : '💸 Bought'} ${Number(formattedVoidAm
 🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID
 🔥 Percent Burned: ${percentBurned.toFixed(3)}%
 <a href="${chartLink}">📈 Chart</a>
-<a href="${txHashLink}">💱 TX Hash</a>
-${!isLikelyArbitrage ? `⚖️ Remaining VOID Balance: ${formattedFromBalance.toFixed(2)}
+<a href="${txHashLink}">💱 TX Hash</a>${!isLikelyArbitrage ? `
+⚖️ Remaining VOID Balance: ${formattedFromBalance.toFixed(2)}
 🛡️ VOID Rank: ${getVoidRank(formattedFromBalance)}` : ''}
-🚰 Pool: VOID/ETH
-${isLikelyArbitrage ? '⚠️ Arbitrage Transaction' : ''}`;
+🚰 Pool: VOID/ETH${isLikelyArbitrage ? '\n⚠️ Arbitrage Transaction' : ''}`;
 
     const messageOptions = {
       caption: message,
