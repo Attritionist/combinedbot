@@ -653,7 +653,6 @@ async function handleSwapEvent(event) {
     const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
 
     const message = `${emojiString}
-
 ${isLikelyArbitrage ? '🤖 Arbitrage' : '💸 Bought'} ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) ${!isLikelyArbitrage ? `(<a href="https://debank.com/profile/${fromAddress}">View Address</a>)` : ''}
 🟣 VOID Price: $${currentVoidUsdPrice.toFixed(5)}
 💰 Market Cap: $${marketCap.toFixed(0)}
