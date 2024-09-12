@@ -609,11 +609,6 @@ async function handleSwapEvent(event) {
     const isVoidBuy = recipient.toLowerCase() === fromAddress.toLowerCase();
     console.log(`Is VOID Buy: ${isVoidBuy}`);
 
-    // Only proceed if it's a buy
-    if (!isVoidBuy) {
-      console.log(`Skipping VOID sell transaction`);
-      return;
-    }
    // Check the balance of the actual 'from' address
     const fromBalance = await voidToken.balanceOf(fromAddress);
     const formattedFromBalance = Number(ethers.utils.formatUnits(fromBalance, VOID_TOKEN_DECIMALS));
