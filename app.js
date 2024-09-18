@@ -656,7 +656,7 @@ async function handleSwapEvent(event) {
 
     // Apply different thresholds for arbitrage and normal transactions
     if (isLikelyArbitrage) {
-      if (transactionValueUSD < 750) {
+      if (transactionValueUSD < 500) {
         console.log(`Skipping low-value arbitrage transaction: $${transactionValueUSD.toFixed(2)}`);
         return;
       }
@@ -716,41 +716,6 @@ ${isLikelyArbitrage ? '🤖 Arbitrage' : '💸 Bought'} ${Number(formattedVoidAm
   } catch (error) {
     console.error('Error in handleSwapEvent:', error);
     console.error('Event that caused the error:', JSON.stringify(event, null, 2));
-  }
-}
-function initializeWebSocket() {
-  try {
-    const customWsProvider = new ethers.providers.WebSocketProvider(WSS_ENDPOINT);
-    
-    const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, customWsProvider);
-    const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, customWsProvider);
-
-    voidPool.on('Swap', (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
-      handleSwapEvent({
-        args: { sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick },
-        transactionHash: event.transactionHash
-      });
-    });
-
-    voidTokenWS.on('Transfer', (from, to, value, event) => {
-      if (to.toLowerCase() === BURN_ADDRESS.toLowerCase()) {
-        handleTransfer(from, to, value, event);
-      }
-    });
-
-    console.log('WebSocket connection established and listening for Swap and Transfer (to burn address) events.');
-
-    // Periodic check for WebSocket health
-    setInterval(() => {
-      if (customWsProvider._websocket.readyState !== WebSocket.OPEN) {
-        console.log('WebSocket connection is not open. Attempting to reconnect...');
-        customWsProvider.reconnect();
-      }
-    }, 60000); // Check every minute
-
-  } catch (error) {
-    console.error('Error initializing WebSocket:', error);
-    setTimeout(initializeWebSocket, 5000); // Retry after 5 seconds
   }
 }
 
