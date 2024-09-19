@@ -606,8 +606,6 @@ async function handleTransfer(from, to, value, event) {
   console.log(`Burn detected: ${amountBurned.toFixed(2)} VOID, Total burned: ${voidTotalBurnedAmount.toFixed(2)} VOID`);
 }
 
-const VOID_POOL_ADDRESS = '0xb14e941d34d61ae251ccc08ac15b8455ae9f60a5';
-
 async function handleSwapEvent(event) {
   try {
     console.log('Received Swap event:', JSON.stringify(event, null, 2));
