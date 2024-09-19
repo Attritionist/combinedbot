@@ -724,7 +724,7 @@ ${isLikelyArbitrage ? '🤖 Arbitrage' : '💸 Bought'} ${Number(formattedVoidAm
 }
 function initializeWebSocket() {
   try {
-    const customWsProvider = new ethers.providers.WebSocketProvider(WSS_ENDPOINT);
+    const customWsProvider = new CustomWebSocketProvider(WSS_ENDPOINT);
     
     const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, customWsProvider);
     const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, customWsProvider);
