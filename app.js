@@ -627,6 +627,13 @@ async function handleSwapEvent(event) {
     const amount0 = event.args.amount0;
     const amount1 = event.args.amount1;
 
+    // Check if it's a buy transaction
+    const isVoidBuy = amount0.lt(0);
+    if (!isVoidBuy) {
+      console.log(`Skipping sell transaction`);
+      return;
+    }
+
     const voidAmount = amount0.abs();
     const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
 
@@ -638,22 +645,13 @@ async function handleSwapEvent(event) {
     const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
 
-    // Determine if it's a buy or sell
-    const isVoidBuy = amount0.lt(0);
-
     // Check the balance of the actual 'from' address
     const fromBalance = await voidToken.balanceOf(fromAddress);
     const formattedFromBalance = Number(ethers.utils.formatUnits(fromBalance, VOID_TOKEN_DECIMALS));
     console.log(`From address (${fromAddress}) balance: ${formattedFromBalance.toFixed(2)} VOID`);
 
-    // For buys, we determine if it's likely an arbitrage transaction
-    const isLikelyArbitrage = isVoidBuy && formattedFromBalance < 505;
-
-    // Skip irrelevant transactions
-    if (!isVoidBuy && formattedFromBalance >= 505) {
-      console.log(`Skipping sell transaction from non-arbitrage wallet`);
-      return;
-    }
+    // Determine if it's likely an arbitrage transaction
+    const isLikelyArbitrage = formattedFromBalance < 505;
 
     // Apply different thresholds for arbitrage and normal transactions
     if (isLikelyArbitrage) {
@@ -675,13 +673,13 @@ async function handleSwapEvent(event) {
     const imageUrl = isLikelyArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(getVoidRank(formattedFromBalance));
 
     const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 100), 48); // Max 48 pairs (96 emojis)
-    const emojiString = isLikelyArbitrage ? "🤖🔩".repeat(emojiPairCount) : (isVoidBuy ? "🟣🔥" : "💰💸").repeat(emojiPairCount);
+    const emojiString = isLikelyArbitrage ? "🤖🔩".repeat(emojiPairCount) : "🟣🔥".repeat(emojiPairCount);
 
     const txHashLink = `https://basescan.org/tx/${txHash}`;
     const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
 
     const message = `${emojiString}
-${isLikelyArbitrage ? '🤖 Arbitrage' : (isVoidBuy ? '💸 Bought' : '💰 Sold')} ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) ${!isLikelyArbitrage ? `(<a href="https://debank.com/profile/${fromAddress}">View Address</a>)` : ''}
+${isLikelyArbitrage ? '🤖 Arbitrage' : '💸 Bought'} ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) ${!isLikelyArbitrage ? `(<a href="https://debank.com/profile/${fromAddress}">View Address</a>)` : ''}
 🟣 VOID Price: $${currentVoidUsdPrice.toFixed(5)}
 💰 Market Cap: $${marketCap.toFixed(0)}
 🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID
@@ -701,7 +699,7 @@ ${isLikelyArbitrage ? '🤖 Arbitrage' : (isVoidBuy ? '💸 Bought' : '💰 Sold
     await sendVoidPhotoMessage(imageUrl, messageOptions);
     console.log('VOID photo message sent successfully.');
 
-    console.log(`VOID ${isLikelyArbitrage ? 'Arbitrage' : (isVoidBuy ? 'Buy' : 'Sell')} detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), From Address: ${fromAddress}, Is Arbitrage: ${isLikelyArbitrage}`);
+    console.log(`VOID ${isLikelyArbitrage ? 'Arbitrage' : 'Buy'} detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), From Address: ${fromAddress}, Is Arbitrage: ${isLikelyArbitrage}`);
 
     processedTransactions.add(txHash);
     if (processedTransactions.size % 100 === 0) {
