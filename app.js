@@ -666,7 +666,7 @@ async function handleSwapEvent(event) {
 
     // Apply different thresholds for arbitrage and normal transactions
     if (isLikelyArbitrage) {
-      if (transactionValueUSD < 750) {
+      if (transactionValueUSD < 250) {
         console.log(`Skipping low-value arbitrage transaction: $${transactionValueUSD.toFixed(2)}`);
         return;
       }
