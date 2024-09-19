@@ -648,13 +648,6 @@ async function handleSwapEvent(event) {
       return;
     }
 
-    // Check if the transaction actually involved a significant amount of VOID
-    const minVoidAmount = ethers.utils.parseUnits("0.000001", VOID_TOKEN_DECIMALS);
-    if (voidAmount.abs().lt(minVoidAmount)) {
-      console.log(`Skipping transaction with negligible VOID amount`);
-      return;
-    }
-
     const formattedVoidAmount = ethers.utils.formatUnits(voidAmount.abs(), VOID_TOKEN_DECIMALS);
 
     console.log(`VOID amount: ${formattedVoidAmount}`);
