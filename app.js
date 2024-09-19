@@ -606,6 +606,8 @@ async function handleTransfer(from, to, value, event) {
   console.log(`Burn detected: ${amountBurned.toFixed(2)} VOID, Total burned: ${voidTotalBurnedAmount.toFixed(2)} VOID`);
 }
 
+const VOID_POOL_ADDRESS = '0xb14e941d34d61ae251ccc08ac15b8455ae9f60a5';
+
 async function handleSwapEvent(event) {
   try {
     console.log('Received Swap event:', JSON.stringify(event, null, 2));
@@ -624,18 +626,36 @@ async function handleSwapEvent(event) {
     console.log(`Transaction initiator: ${fromAddress}`);
     console.log(`Recipient: ${recipient}`);
 
+    const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, provider);
+
     const amount0 = event.args.amount0;
     const amount1 = event.args.amount1;
 
-    // Check if it's a buy transaction
-    const isVoidBuy = amount0.lt(0);
-    if (!isVoidBuy) {
-      console.log(`Skipping sell transaction`);
+    // Get the addresses of token0 and token1 in the pool
+    const token0Address = await voidPool.token0();
+    const token1Address = await voidPool.token1();
+
+    // Determine which amount corresponds to VOID
+    const isVoidToken0 = token0Address.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase();
+    const voidAmount = isVoidToken0 ? amount0 : amount1;
+    const otherAmount = isVoidToken0 ? amount1 : amount0;
+
+    // Check if it's a buy transaction (VOID tokens coming out of the pool)
+    const isVoidBuy = voidAmount.lt(0);
+
+    if (!isVoidBuy || voidAmount.isZero()) {
+      console.log(`Skipping sell, unrelated, or zero-amount transaction`);
       return;
     }
 
-    const voidAmount = amount0.abs();
-    const formattedVoidAmount = ethers.utils.formatUnits(voidAmount, VOID_TOKEN_DECIMALS);
+    // Check if the transaction actually involved a significant amount of VOID
+    const minVoidAmount = ethers.utils.parseUnits("0.000001", VOID_TOKEN_DECIMALS);
+    if (voidAmount.abs().lt(minVoidAmount)) {
+      console.log(`Skipping transaction with negligible VOID amount`);
+      return;
+    }
+
+    const formattedVoidAmount = ethers.utils.formatUnits(voidAmount.abs(), VOID_TOKEN_DECIMALS);
 
     console.log(`VOID amount: ${formattedVoidAmount}`);
     console.log(`amount0: ${amount0.toString()}`);
