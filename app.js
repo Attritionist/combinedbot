@@ -279,9 +279,22 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
 
     setTimeout(() => {
       try {
-        this._websocket = new WebSocket(this.connection.url);
+        // Instead of reassigning _websocket, create a new connection
+        const newWebSocket = new WebSocket(this.connection.url);
+        
+        // Replace the old WebSocket handlers with the new ones
+        this._websocket.removeAllListeners();
+        this._websocket = newWebSocket;
+        
+        // Set up the new WebSocket
         this.setupHeartbeat();
         this.setupReconnection();
+        
+        // Emit the 'open' event when the new WebSocket connects
+        newWebSocket.onopen = () => {
+          this.emit('open');
+          console.log('WebSocket reconnected successfully');
+        };
       } catch (error) {
         console.error('Error during reconnection:', error);
         this.reconnect();
