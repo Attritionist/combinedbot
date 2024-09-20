@@ -517,7 +517,7 @@ async function sendVoidBurnFromQueue() {
     setTimeout(() => {
       isVoidSendingMessage = false;
       sendVoidBurnFromQueue();
-    }, 100);
+    }, 2000);
   }
 }
 
@@ -536,7 +536,7 @@ async function sendYangBurnFromQueue() {
     setTimeout(() => {
       isYangSendingMessage = false;
       sendYangBurnFromQueue();
-    }, 100);
+    }, 2000);
   }
 }
 
@@ -557,7 +557,7 @@ async function sendVoidMessageFromQueue() {
     setTimeout(() => {
       isVoidSendingMessage = false;
       sendVoidMessageFromQueue();
-    }, 100);
+    }, 2000);
   }
 }
 
