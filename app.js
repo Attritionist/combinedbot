@@ -517,7 +517,7 @@ async function sendVoidBurnFromQueue() {
     setTimeout(() => {
       isVoidSendingMessage = false;
       sendVoidBurnFromQueue();
-    }, 500);
+    }, 100);
   }
 }
 
@@ -536,7 +536,7 @@ async function sendYangBurnFromQueue() {
     setTimeout(() => {
       isYangSendingMessage = false;
       sendYangBurnFromQueue();
-    }, 1000);
+    }, 100);
   }
 }
 
@@ -557,7 +557,7 @@ async function sendVoidMessageFromQueue() {
     setTimeout(() => {
       isVoidSendingMessage = false;
       sendVoidMessageFromQueue();
-    }, 1000);
+    }, 100);
   }
 }
 
@@ -750,11 +750,11 @@ function initializeWebSocket() {
         console.log('WebSocket connection is not open. Attempting to reconnect...');
         customWsProvider.reconnect();
       }
-    }, 60000); // Check every minute
+    }, 90000); // Check every minute
 
   } catch (error) {
     console.error('Error initializing WebSocket:', error);
-    setTimeout(initializeWebSocket, 5000); // Retry after 5 seconds
+    setTimeout(initializeWebSocket, 6000); // Retry after 5 seconds
   }
 }
 
