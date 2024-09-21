@@ -446,6 +446,7 @@ function getRankImageUrl(voidRank) {
     "VOID Knight": "https://voidonbase.com/Knight.png",
     "VOID Sorcerer": "https://voidonbase.com/Sorcerer.png",
     "VOID Warlock": "https://voidonbase.com/Warlock.png",
+    "VOID Archmage": "https://voidonbase.com/Archmage.png",
     "VOID Dank Mystic": "https://voidonbase.com/420.png",
     "VOID Ascendant": "https://voidonbase.com/Ascendant.png",
     "VOID Archdruid": "https://voidonbase.com/Archdruid.png",
