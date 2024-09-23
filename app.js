@@ -238,8 +238,6 @@ let processedTransactions = new Set();
 class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
   constructor(url, network) {
     super(url, network);
-    this._activeWebSocket = null;  // Use a separate reference for the active WebSocket
-    this.setupNewWebSocket(url); // Initialize the websocket
     this.heartbeatInterval = null;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
@@ -248,51 +246,65 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
     this.setupReconnection();
   }
 
-  setupNewWebSocket(url) {
-    this._activeWebSocket = new WebSocket(url);
-    this._activeWebSocket.onopen = () => this.emit('open');
-    this._activeWebSocket.on('close', (code) => this.handleDisconnect());
-    this._activeWebSocket.on('error', (error) => {
-      console.error('WebSocket error:', error);
-      this.reconnect();
-    });
-  }
-  
-  // Update your reconnect method to create a new connection instead
-  async reconnect() {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('Max reconnection attempts reached. Reinitializing the entire WebSocket setup...');
-      this.reconnectAttempts = 0;
-      await this.initializeWebSocket(); // Provide a method to re-initialize
-      return;
-    }
-
-    this.reconnectAttempts++;
-    console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-
-    setTimeout(() => {
-      this.setupNewWebSocket(this.connection.url);
-      console.log('WebSocket reconnected successfully');
-    }, this.reconnectDelay * this.reconnectAttempts);
+  setupHeartbeat() {
+    this.heartbeatInterval = setInterval(() => {
+      if (this._websocket.readyState === WebSocket.OPEN) {
+        this._websocket.ping();
+      }
+    }, 30000); // Send a ping every 30 seconds
   }
 
-  handleDisconnect() {
-    console.error(`WebSocket connection closed. Attempting to reconnect...`);
+  setupReconnection() {
+  this._websocket.on('close', (code) => {
+    console.error(`WebSocket connection closed with code ${code}. Attempting to reconnect...`);
     this.reconnect();
+  });
+
+  this._websocket.on('error', (error) => {
+    console.error('WebSocket error:', error);
+    this.reconnect();
+  });
+}
+
+  async reconnect() {
+  if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+    console.error('Max reconnection attempts reached. Reinitializing the entire WebSocket setup...');
+    this.reconnectAttempts = 0;
+    await initializeWebSocket();
+    return;
   }
+
+  this.reconnectAttempts++;
+  console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+
+  setTimeout(() => {
+    try {
+      // Instead of reassigning _websocket, create a new connection
+      const newWebSocket = new WebSocket(this.connection.url);
+      
+      // Replace the old WebSocket handlers with the new ones
+      this._websocket.removeAllListeners();
+      this._websocket = newWebSocket;
+      
+      // Set up the new WebSocket
+      this.setupHeartbeat();
+      this.setupReconnection();
+      
+      // Emit the 'open' event when the new WebSocket connects
+      newWebSocket.onopen = () => {
+        this.emit('open');
+        console.log('WebSocket reconnected successfully');
+      };
+    } catch (error) {
+      console.error('Error during reconnection:', error);
+      this.reconnect();
+    }
+  }, this.reconnectDelay * this.reconnectAttempts);
+}
 
   destroy() {
     clearInterval(this.heartbeatInterval);
-    this._activeWebSocket.close();  // Close the active websocket cleanly
     super.destroy();
-  }
-  
-  setupHeartbeat() {
-    this.heartbeatInterval = setInterval(() => {
-      if (this._activeWebSocket.readyState === WebSocket.OPEN) {
-        this._activeWebSocket.ping();
-      }
-    }, 30000); // Send a ping every 30 seconds
   }
 }
 // Utility functions
@@ -425,7 +437,7 @@ function getRankImageUrl(voidRank) {
     "VOID Disciple": "https://voidonbase.com/Disciple.png",
     "VOID Master": "https://voidonbase.com/Master.png",
     "VOID Summoner": "https://voidonbase.com/Summoner.png",
-    "VOID Necromancer": "https://voidonbase.com/Necromancer.png",
+    "VOID Necromancer": "https://voidonbase.com/Necromanger.png",
     "VOID Seer": "https://voidonbase.com/Seer.png",
     "VOID Enchanter": "https://voidonbase.com/Enchanter.png",
     "VOID Warrior": "https://voidonbase.com/Warrior.png",
