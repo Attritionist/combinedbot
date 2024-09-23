@@ -224,6 +224,7 @@ const voidContract = new ethers.Contract(ENTROPY_ADDRESS, VOID_ABI, wallet);
 const yangContract = new ethers.Contract(YANG_CONTRACT_ADDRESS, YANG_ABI, wallet);
 const voidToken = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, provider);
 
+
 let voidTotalBurnedAmount = 0;
 let yangTotalBurnedAmount = 0;
 let currentVoidUsdPrice = null;
@@ -237,6 +238,8 @@ let processedTransactions = new Set();
 class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
   constructor(url, network) {
     super(url, network);
+    this._activeWebSocket = null;  // Use a separate reference for the active WebSocket
+    this.setupNewWebSocket(url); // Initialize the websocket
     this.heartbeatInterval = null;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
@@ -245,31 +248,22 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
     this.setupReconnection();
   }
 
-  setupHeartbeat() {
-    this.heartbeatInterval = setInterval(() => {
-      if (this._websocket.readyState === WebSocket.OPEN) {
-        this._websocket.ping();
-      }
-    }, 30000); // Send a ping every 30 seconds
-  }
-
-  setupReconnection() {
-    this._websocket.on('close', (code) => {
-      console.error(`WebSocket connection closed with code ${code}. Attempting to reconnect...`);
-      this.reconnect();
-    });
-
-    this._websocket.on('error', (error) => {
+  setupNewWebSocket(url) {
+    this._activeWebSocket = new WebSocket(url);
+    this._activeWebSocket.onopen = () => this.emit('open');
+    this._activeWebSocket.on('close', (code) => this.handleDisconnect());
+    this._activeWebSocket.on('error', (error) => {
       console.error('WebSocket error:', error);
       this.reconnect();
     });
   }
-
+  
+  // Update your reconnect method to create a new connection instead
   async reconnect() {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('Max reconnection attempts reached. Reinitializing the entire WebSocket setup...');
       this.reconnectAttempts = 0;
-      await initializeWebSocket();
+      await this.initializeWebSocket(); // Provide a method to re-initialize
       return;
     }
 
@@ -277,36 +271,30 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
     console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
 
     setTimeout(() => {
-      try {
-        // Instead of reassigning _websocket, create a new connection
-        const newWebSocket = new WebSocket(this.connection.url);
-        
-        // Replace the old WebSocket handlers with the new ones
-        this._websocket.removeAllListeners();
-        this._websocket = newWebSocket;
-        
-        // Set up the new WebSocket
-        this.setupHeartbeat();
-        this.setupReconnection();
-        
-        // Emit the 'open' event when the new WebSocket connects
-        newWebSocket.onopen = () => {
-          this.emit('open');
-          console.log('WebSocket reconnected successfully');
-        };
-      } catch (error) {
-        console.error('Error during reconnection:', error);
-        this.reconnect();
-      }
+      this.setupNewWebSocket(this.connection.url);
+      console.log('WebSocket reconnected successfully');
     }, this.reconnectDelay * this.reconnectAttempts);
+  }
+
+  handleDisconnect() {
+    console.error(`WebSocket connection closed. Attempting to reconnect...`);
+    this.reconnect();
   }
 
   destroy() {
     clearInterval(this.heartbeatInterval);
+    this._activeWebSocket.close();  // Close the active websocket cleanly
     super.destroy();
   }
+  
+  setupHeartbeat() {
+    this.heartbeatInterval = setInterval(() => {
+      if (this._activeWebSocket.readyState === WebSocket.OPEN) {
+        this._activeWebSocket.ping();
+      }
+    }, 30000); // Send a ping every 30 seconds
+  }
 }
-
 // Utility functions
 function loadProcessedTransactions() {
   try {
@@ -341,7 +329,6 @@ async function getOptimizedGasPrice() {
     return ethers.utils.parseUnits('0.1', 'gwei');
   }
 }
-
 function getVoidRank(voidBalance) {
   const VOID_RANKS = {
     "VOID Ultimate": 2000000,
@@ -413,7 +400,7 @@ function getVoidRank(voidBalance) {
     "VOID Learner": 2500,
     "VOID Initiate": 1000,
     "VOID Peasant": 1
-  };
+};
 
   let voidRank = "VOID Peasant";
   for (const [rank, threshold] of Object.entries(VOID_RANKS)) {
@@ -425,7 +412,6 @@ function getVoidRank(voidBalance) {
 
   return voidRank;
 }
-
 
 function getRankImageUrl(voidRank) {
   const rankToImageUrlMap = {
