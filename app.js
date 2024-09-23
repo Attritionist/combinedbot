@@ -255,52 +255,52 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
   }
 
   setupReconnection() {
-    this._websocket.on('close', (code) => {
-      console.error(`WebSocket connection closed with code ${code}. Attempting to reconnect...`);
-      this.reconnect();
-    });
+  this._websocket.on('close', (code) => {
+    console.error(`WebSocket connection closed with code ${code}. Attempting to reconnect...`);
+    this.reconnect();
+  });
 
-    this._websocket.on('error', (error) => {
-      console.error('WebSocket error:', error);
-      this.reconnect();
-    });
-  }
+  this._websocket.on('error', (error) => {
+    console.error('WebSocket error:', error);
+    this.reconnect();
+  });
+}
 
   async reconnect() {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('Max reconnection attempts reached. Reinitializing the entire WebSocket setup...');
-      this.reconnectAttempts = 0;
-      await initializeWebSocket();
-      return;
-    }
-
-    this.reconnectAttempts++;
-    console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-
-    setTimeout(() => {
-      try {
-        // Instead of reassigning _websocket, create a new connection
-        const newWebSocket = new WebSocket(this.connection.url);
-        
-        // Replace the old WebSocket handlers with the new ones
-        this._websocket.removeAllListeners();
-        this._websocket = newWebSocket;
-        
-        // Set up the new WebSocket
-        this.setupHeartbeat();
-        this.setupReconnection();
-        
-        // Emit the 'open' event when the new WebSocket connects
-        newWebSocket.onopen = () => {
-          this.emit('open');
-          console.log('WebSocket reconnected successfully');
-        };
-      } catch (error) {
-        console.error('Error during reconnection:', error);
-        this.reconnect();
-      }
-    }, this.reconnectDelay * this.reconnectAttempts);
+  if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+    console.error('Max reconnection attempts reached. Reinitializing the entire WebSocket setup...');
+    this.reconnectAttempts = 0;
+    await initializeWebSocket();
+    return;
   }
+
+  this.reconnectAttempts++;
+  console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+
+  setTimeout(() => {
+    try {
+      // Instead of reassigning _websocket, create a new connection
+      const newWebSocket = new WebSocket(this.connection.url);
+      
+      // Replace the old WebSocket handlers with the new ones
+      this._websocket.removeAllListeners();
+      this._websocket = newWebSocket;
+      
+      // Set up the new WebSocket
+      this.setupHeartbeat();
+      this.setupReconnection();
+      
+      // Emit the 'open' event when the new WebSocket connects
+      newWebSocket.onopen = () => {
+        this.emit('open');
+        console.log('WebSocket reconnected successfully');
+      };
+    } catch (error) {
+      console.error('Error during reconnection:', error);
+      this.reconnect();
+    }
+  }, this.reconnectDelay * this.reconnectAttempts);
+}
 
   destroy() {
     clearInterval(this.heartbeatInterval);
