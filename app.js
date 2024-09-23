@@ -3,6 +3,7 @@ const TelegramBot = require("node-telegram-bot-api");
 const ethers = require('ethers');
 const fs = require('fs');
 const WebSocket = require('ws');
+const EventEmitter = require('events');
 require("dotenv").config();
 
 // Environment variables
@@ -241,6 +242,7 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectDelay = 5000;
+    this.emitter = new EventEmitter();
     this.setupHeartbeat();
     this.setupReconnection();
   }
@@ -255,50 +257,14 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
 
   setupReconnection() {
     this._websocket.on('close', (code) => {
-      console.error(`WebSocket connection closed with code ${code}. Attempting to reconnect...`);
-      this.reconnect();
+      console.error(`WebSocket connection closed with code ${code}. Emitting 'close' event.`);
+      this.emitter.emit('close', code);
     });
 
     this._websocket.on('error', (error) => {
       console.error('WebSocket error:', error);
-      this.reconnect();
+      this.emitter.emit('error', error);
     });
-  }
-
-  async reconnect() {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('Max reconnection attempts reached. Reinitializing the entire WebSocket setup...');
-      this.reconnectAttempts = 0;
-      await initializeWebSocket();
-      return;
-    }
-
-    this.reconnectAttempts++;
-    console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-
-    setTimeout(() => {
-      try {
-        // Instead of reassigning _websocket, create a new connection
-        const newWebSocket = new WebSocket(this.connection.url);
-        
-        // Replace the old WebSocket handlers with the new ones
-        this._websocket.removeAllListeners();
-        this._websocket = newWebSocket;
-        
-        // Set up the new WebSocket
-        this.setupHeartbeat();
-        this.setupReconnection();
-        
-        // Emit the 'open' event when the new WebSocket connects
-        newWebSocket.onopen = () => {
-          this.emit('open');
-          console.log('WebSocket reconnected successfully');
-        };
-      } catch (error) {
-        console.error('Error during reconnection:', error);
-        this.reconnect();
-      }
-    }, this.reconnectDelay * this.reconnectAttempts);
   }
 
   destroy() {
@@ -591,6 +557,7 @@ async function getVoidPrice() {
     return null;
   }
 }
+
 async function initializeTotalBurnedAmount() {
   try {
     const burnedBalance = await voidToken.balanceOf(BURN_ADDRESS);
@@ -604,18 +571,18 @@ async function initializeTotalBurnedAmount() {
 async function handleTransfer(from, to, value, event) {
   const txHash = event.transactionHash;
   if (processedTransactions.has(txHash)) return;
-  
+
   const amountBurned = Number(ethers.utils.formatUnits(value, VOID_TOKEN_DECIMALS));
   voidTotalBurnedAmount += amountBurned;
-  
+
   const txHashLink = `https://basescan.org/tx/${txHash}`;
   const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
   const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
-  
+
   const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${amountBurned.toFixed(2)} VOID\n🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID\n🔥 Percent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
 
   addToVoidBurnQueue(VOID_BURN_ANIMATION, { caption: burnMessage, parse_mode: "HTML" });
-  
+
   processedTransactions.add(txHash);
   saveProcessedTransactions();
 
@@ -738,40 +705,58 @@ ${isLikelyArbitrage ? '🤖 Arbitrage Buy' : '💸 Bought'} ${Number(formattedVo
     console.error('Event that caused the error:', JSON.stringify(event, null, 2));
   }
 }
+
 function initializeWebSocket() {
-  try {
-    const customWsProvider = new CustomWebSocketProvider(WSS_ENDPOINT);
-    
-    const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, customWsProvider);
-    const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, customWsProvider);
+  let customWsProvider = new CustomWebSocketProvider(WSS_ENDPOINT);
 
-    voidPool.on('Swap', (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
-      handleSwapEvent({
-        args: { sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick },
-        transactionHash: event.transactionHash
-      });
+  const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, customWsProvider);
+  const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, customWsProvider);
+
+  voidPool.on('Swap', (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
+    handleSwapEvent({
+      args: { sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick },
+      transactionHash: event.transactionHash
     });
+  });
 
-    voidTokenWS.on('Transfer', (from, to, value, event) => {
-      if (to.toLowerCase() === BURN_ADDRESS.toLowerCase()) {
-        handleTransfer(from, to, value, event);
-      }
-    });
+  voidTokenWS.on('Transfer', (from, to, value, event) => {
+    if (to.toLowerCase() === BURN_ADDRESS.toLowerCase()) {
+      handleTransfer(from, to, value, event);
+    }
+  });
 
-    console.log('WebSocket connection established and listening for Swap and Transfer (to burn address) events.');
+  console.log('WebSocket connection established and listening for Swap and Transfer (to burn address) events.');
 
-    // Periodic check for WebSocket health
-    setInterval(() => {
-      if (customWsProvider._websocket.readyState !== WebSocket.OPEN) {
-        console.log('WebSocket connection is not open. Attempting to reconnect...');
-        customWsProvider.reconnect();
-      }
-    }, 90000); // Check every minute
+  // Listen for close and error events to handle reconnection
+  customWsProvider.emitter.on('close', async (code) => {
+    if (customWsProvider.reconnectAttempts < customWsProvider.maxReconnectAttempts) {
+      customWsProvider.reconnectAttempts++;
+      const delay = customWsProvider.reconnectDelay * customWsProvider.reconnectAttempts;
+      console.log(`Reconnection attempt ${customWsProvider.reconnectAttempts}/${customWsProvider.maxReconnectAttempts} in ${delay}ms`);
 
-  } catch (error) {
-    console.error('Error initializing WebSocket:', error);
-    setTimeout(initializeWebSocket, 6000); // Retry after 5 seconds
-  }
+      setTimeout(() => {
+        initializeWebSocket(); // Attempt to reinitialize WebSocket
+      }, delay);
+    } else {
+      console.error('Max reconnection attempts reached. Restarting the WebSocket setup.');
+      customWsProvider.reconnectAttempts = 0;
+      initializeWebSocket();
+    }
+  });
+
+  customWsProvider.emitter.on('error', async (error) => {
+    console.error('WebSocket encountered an error:', error);
+    // Optional: Handle specific error types or decide whether to reconnect
+  });
+
+  // Periodic check for WebSocket health
+  setInterval(() => {
+    if (customWsProvider._websocket.readyState !== WebSocket.OPEN) {
+      console.log('WebSocket connection is not open. Reinitializing...');
+      customWsProvider.destroy(); // Clean up the existing provider
+      initializeWebSocket(); // Reinitialize the WebSocket connection
+    }
+  }, 90000); // Check every 90 seconds
 }
 
 async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
@@ -779,9 +764,9 @@ async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
   while (retries < maxRetries) {
     try {
       console.log(`[${new Date().toISOString()}] Attempting to claim VOID (attempt ${retries + 1})...`);
-      
+
       const optimizedGasPrice = await getOptimizedGasPrice();
-      
+
       const claimTx = await voidContract.claimVoid({ gasPrice: optimizedGasPrice });
       console.log(`[${new Date().toISOString()}] Claim transaction sent: ${claimTx.hash}`);
       const claimReceipt = await claimTx.wait();
@@ -816,10 +801,10 @@ async function claimLoop() {
       console.log(`[${new Date().toISOString()}] timeLeftCheck transaction sent: ${tx.hash}`);
       const receipt = await tx.wait();
       console.log(`[${new Date().toISOString()}] timeLeftCheck transaction confirmed. Gas used: ${receipt.gasUsed.toString()}`);
-      
+
       timeLeft = await voidContract.timeLeft();
       console.log(`[${new Date().toISOString()}] Raw time left until next claim: ${timeLeft.toString()} seconds`);
-      
+
       const buffer = ethers.BigNumber.from(40);
       timeLeft = timeLeft.add(buffer);
       console.log(`[${new Date().toISOString()}] Time left with buffer: ${timeLeft.toString()} seconds (including ${buffer.toString()} seconds buffer)`);
@@ -834,7 +819,7 @@ async function claimLoop() {
         await claimVoidWithRetry();
         timeLeft = await voidContract.timeLeft();
         console.log(`[${new Date().toISOString()}] Raw new time left until next claim: ${timeLeft.toString()} seconds`);
-        
+
         const buffer = ethers.BigNumber.from(40);
         timeLeft = timeLeft.add(buffer);
         console.log(`[${new Date().toISOString()}] New time left with buffer: ${timeLeft.toString()} seconds (including ${buffer.toString()} seconds buffer)`);
@@ -886,9 +871,9 @@ async function doBurnWithRetry(maxRetries = 5, initialDelay = 1000) {
   while (retries < maxRetries) {
     try {
       console.log('Calling YANG doBurn function...');
-      
+
       const optimizedGasPrice = await getOptimizedGasPrice();
-      
+
       const tx = await yangContract.doBurn({ gasPrice: optimizedGasPrice });
       await tx.wait();
       console.log('YANG burn transaction successful:', tx.hash);
@@ -926,7 +911,7 @@ async function checkYangTotalSupply() {
     if (response.data.status === "1") {
       const newTotalSupply = Number(response.data.result) / 10 ** YANG_TOKEN_DECIMALS;
       const previousTotalSupply = YANG_INITIAL_SUPPLY - yangTotalBurnedAmount;
-      
+
       if (newTotalSupply < previousTotalSupply) {
         const burnedAmount = previousTotalSupply - newTotalSupply;
         yangTotalBurnedAmount += burnedAmount;
@@ -944,14 +929,14 @@ async function reportYangBurn(burnedAmount, previousTotalSupply) {
   const percentBurned = ((YANG_INITIAL_SUPPLY - (previousTotalSupply - burnedAmount)) / YANG_INITIAL_SUPPLY) * 100;
   const newlyBurnedPercent = (burnedAmount / YANG_INITIAL_SUPPLY) * 100;
   const currentPrice = await getCurrentYangPrice();
-  
+
   const burnMessage = `YANG Burned!\n\n☀️☀️☀️☀️☀️\n🔥 Burned: ${burnedAmount.toFixed(8)} YANG (${newlyBurnedPercent.toFixed(4)}%)\n🔥 Total Burned: ${yangTotalBurnedAmount.toFixed(8)} YANG\n🔥 Total Percent Burned: ${percentBurned.toFixed(2)}%\n☯️ YANG to YIN ratio: ${currentPrice}`;
 
   const burnAnimationMessageOptions = {
     caption: burnMessage,
     parse_mode: "HTML",
   };
-  
+
   addToYangBurnQueue(YANG_BURN_ANIMATION, burnAnimationMessageOptions);
 }
 
@@ -967,7 +952,7 @@ function scheduleHourlyYangBurn() {
   const now = new Date();
   const buffer = 30000; // 30 seconds buffer
   const delay = (60 * 60 * 1000) - (now.getMinutes() * 60 * 1000 + now.getSeconds() * 1000 + now.getMilliseconds()) + buffer;
-  
+
   setTimeout(() => {
     doBurnWithRetry().then(() => {
       console.log(`[${new Date().toISOString()}] Hourly YANG burn completed`);
@@ -984,7 +969,7 @@ async function initializeAndStart() {
     console.log("Initializing combined VOID and YANG bot...");
 
     loadProcessedTransactions();
-    
+
     await initializeTotalBurnedAmount();
     claimLoop();
 
@@ -1005,7 +990,7 @@ async function initializeAndStart() {
     console.log("Combined VOID and YANG bot started successfully!");
   } catch (error) {
     console.error("Error during initialization:", error);
-    setTimeout(initializeAndStart, 60000); // Retry after 1 minute
+    setTimeout(initializeAndStart, 60000);
   }
 }
 
