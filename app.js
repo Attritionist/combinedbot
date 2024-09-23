@@ -224,7 +224,6 @@ const voidContract = new ethers.Contract(ENTROPY_ADDRESS, VOID_ABI, wallet);
 const yangContract = new ethers.Contract(YANG_CONTRACT_ADDRESS, YANG_ABI, wallet);
 const voidToken = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, provider);
 
-
 let voidTotalBurnedAmount = 0;
 let yangTotalBurnedAmount = 0;
 let currentVoidUsdPrice = null;
@@ -255,58 +254,59 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
   }
 
   setupReconnection() {
-  this._websocket.on('close', (code) => {
-    console.error(`WebSocket connection closed with code ${code}. Attempting to reconnect...`);
-    this.reconnect();
-  });
+    this._websocket.on('close', (code) => {
+      console.error(`WebSocket connection closed with code ${code}. Attempting to reconnect...`);
+      this.reconnect();
+    });
 
-  this._websocket.on('error', (error) => {
-    console.error('WebSocket error:', error);
-    this.reconnect();
-  });
-}
-
-  async reconnect() {
-  if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-    console.error('Max reconnection attempts reached. Reinitializing the entire WebSocket setup...');
-    this.reconnectAttempts = 0;
-    await initializeWebSocket();
-    return;
+    this._websocket.on('error', (error) => {
+      console.error('WebSocket error:', error);
+      this.reconnect();
+    });
   }
 
-  this.reconnectAttempts++;
-  console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-
-  setTimeout(() => {
-    try {
-      // Instead of reassigning _websocket, create a new connection
-      const newWebSocket = new WebSocket(this.connection.url);
-      
-      // Replace the old WebSocket handlers with the new ones
-      this._websocket.removeAllListeners();
-      this._websocket = newWebSocket;
-      
-      // Set up the new WebSocket
-      this.setupHeartbeat();
-      this.setupReconnection();
-      
-      // Emit the 'open' event when the new WebSocket connects
-      newWebSocket.onopen = () => {
-        this.emit('open');
-        console.log('WebSocket reconnected successfully');
-      };
-    } catch (error) {
-      console.error('Error during reconnection:', error);
-      this.reconnect();
+  async reconnect() {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('Max reconnection attempts reached. Reinitializing the entire WebSocket setup...');
+      this.reconnectAttempts = 0;
+      await initializeWebSocket();
+      return;
     }
-  }, this.reconnectDelay * this.reconnectAttempts);
-}
+
+    this.reconnectAttempts++;
+    console.log(`Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+
+    setTimeout(() => {
+      try {
+        // Instead of reassigning _websocket, create a new connection
+        const newWebSocket = new WebSocket(this.connection.url);
+        
+        // Replace the old WebSocket handlers with the new ones
+        this._websocket.removeAllListeners();
+        this._websocket = newWebSocket;
+        
+        // Set up the new WebSocket
+        this.setupHeartbeat();
+        this.setupReconnection();
+        
+        // Emit the 'open' event when the new WebSocket connects
+        newWebSocket.onopen = () => {
+          this.emit('open');
+          console.log('WebSocket reconnected successfully');
+        };
+      } catch (error) {
+        console.error('Error during reconnection:', error);
+        this.reconnect();
+      }
+    }, this.reconnectDelay * this.reconnectAttempts);
+  }
 
   destroy() {
     clearInterval(this.heartbeatInterval);
     super.destroy();
   }
 }
+
 // Utility functions
 function loadProcessedTransactions() {
   try {
@@ -341,6 +341,7 @@ async function getOptimizedGasPrice() {
     return ethers.utils.parseUnits('0.1', 'gwei');
   }
 }
+
 function getVoidRank(voidBalance) {
   const VOID_RANKS = {
     "VOID Ultimate": 2000000,
@@ -412,7 +413,7 @@ function getVoidRank(voidBalance) {
     "VOID Learner": 2500,
     "VOID Initiate": 1000,
     "VOID Peasant": 1
-};
+  };
 
   let voidRank = "VOID Peasant";
   for (const [rank, threshold] of Object.entries(VOID_RANKS)) {
@@ -424,6 +425,7 @@ function getVoidRank(voidBalance) {
 
   return voidRank;
 }
+
 
 function getRankImageUrl(voidRank) {
   const rankToImageUrlMap = {
@@ -437,7 +439,7 @@ function getRankImageUrl(voidRank) {
     "VOID Disciple": "https://voidonbase.com/Disciple.png",
     "VOID Master": "https://voidonbase.com/Master.png",
     "VOID Summoner": "https://voidonbase.com/Summoner.png",
-    "VOID Necromancer": "https://voidonbase.com/Necromanger.png",
+    "VOID Necromancer": "https://voidonbase.com/Necromancer.png",
     "VOID Seer": "https://voidonbase.com/Seer.png",
     "VOID Enchanter": "https://voidonbase.com/Enchanter.png",
     "VOID Warrior": "https://voidonbase.com/Warrior.png",
