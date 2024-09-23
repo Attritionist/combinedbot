@@ -224,7 +224,6 @@ const voidContract = new ethers.Contract(ENTROPY_ADDRESS, VOID_ABI, wallet);
 const yangContract = new ethers.Contract(YANG_CONTRACT_ADDRESS, YANG_ABI, wallet);
 const voidToken = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, provider);
 
-
 let voidTotalBurnedAmount = 0;
 let yangTotalBurnedAmount = 0;
 let currentVoidUsdPrice = null;
@@ -307,6 +306,7 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
     super.destroy();
   }
 }
+
 // Utility functions
 function loadProcessedTransactions() {
   try {
@@ -341,6 +341,7 @@ async function getOptimizedGasPrice() {
     return ethers.utils.parseUnits('0.1', 'gwei');
   }
 }
+
 function getVoidRank(voidBalance) {
   const VOID_RANKS = {
     "VOID Ultimate": 2000000,
@@ -412,7 +413,7 @@ function getVoidRank(voidBalance) {
     "VOID Learner": 2500,
     "VOID Initiate": 1000,
     "VOID Peasant": 1
-};
+  };
 
   let voidRank = "VOID Peasant";
   for (const [rank, threshold] of Object.entries(VOID_RANKS)) {
@@ -424,6 +425,7 @@ function getVoidRank(voidBalance) {
 
   return voidRank;
 }
+
 
 function getRankImageUrl(voidRank) {
   const rankToImageUrlMap = {
