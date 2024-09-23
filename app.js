@@ -439,7 +439,7 @@ function getRankImageUrl(voidRank) {
     "VOID Disciple": "https://voidonbase.com/Disciple.png",
     "VOID Master": "https://voidonbase.com/Master.png",
     "VOID Summoner": "https://voidonbase.com/Summoner.png",
-    "VOID Necromancer": "https://voidonbase.com/Necromanger.png",
+    "VOID Necromancer": "https://voidonbase.com/Necromancer.png",
     "VOID Seer": "https://voidonbase.com/Seer.png",
     "VOID Enchanter": "https://voidonbase.com/Enchanter.png",
     "VOID Warrior": "https://voidonbase.com/Warrior.png",
