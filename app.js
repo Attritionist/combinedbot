@@ -235,6 +235,7 @@ let isYangSendingMessage = false;
 const processedTransactionsFilePath = "processed_transactions.json";
 let processedTransactions = new Set();
 
+// Custom WebSocket Provider with Reconnection Logic
 class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
   constructor(url, network) {
     super(url, network);
@@ -252,7 +253,7 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
       if (this._websocket.readyState === WebSocket.OPEN) {
         this._websocket.ping();
       }
-    }, 30000); // Send a ping every 30 seconds
+    }, 30000); // Ping every 30 seconds
   }
 
   setupReconnection() {
@@ -273,7 +274,7 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
   }
 }
 
-// Utility functions
+// Utility Functions
 function loadProcessedTransactions() {
   try {
     if (fs.existsSync(processedTransactionsFilePath)) {
@@ -469,7 +470,7 @@ function getRankImageUrl(voidRank) {
   return rankToImageUrlMap[voidRank] || "https://voidonbase.com/Peasant.jpg";
 }
 
-// Message queue functions
+// Message Queue Functions
 function addToVoidMessageQueue(message) {
   voidMessageQueue.push(message);
 }
@@ -543,7 +544,7 @@ async function sendVoidMessageFromQueue() {
   }
 }
 
-// VOID-specific functions
+// VOID-Specific Functions
 async function getVoidPrice() {
   try {
     const response = await axios.get(
@@ -572,34 +573,41 @@ async function handleTransfer(from, to, value, event) {
   const txHash = event.transactionHash;
   if (processedTransactions.has(txHash)) return;
 
-  const amountBurned = Number(ethers.utils.formatUnits(value, VOID_TOKEN_DECIMALS));
-  voidTotalBurnedAmount += amountBurned;
+  try {
+    const amountBurned = Number(ethers.utils.formatUnits(value, VOID_TOKEN_DECIMALS));
+    voidTotalBurnedAmount += amountBurned;
 
-  const txHashLink = `https://basescan.org/tx/${txHash}`;
-  const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
-  const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
+    const txHashLink = `https://basescan.org/tx/${txHash}`;
+    const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
+    const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
 
-  const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${amountBurned.toFixed(2)} VOID\n🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID\n🔥 Percent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
+    const burnMessage = `VOID Burned!\n\n💀💀💀💀💀\n🔥 Burned: ${amountBurned.toFixed(2)} VOID\n🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID\n🔥 Percent Burned: ${percentBurned.toFixed(2)}%\n🔎 <a href="${chartLink}">Chart</a> | <a href="${txHashLink}">TX Hash</a>`;
 
-  addToVoidBurnQueue(VOID_BURN_ANIMATION, { caption: burnMessage, parse_mode: "HTML" });
+    addToVoidBurnQueue(VOID_BURN_ANIMATION, { caption: burnMessage, parse_mode: "HTML" });
 
-  processedTransactions.add(txHash);
-  saveProcessedTransactions();
+    processedTransactions.add(txHash);
+    saveProcessedTransactions();
 
-  console.log(`Burn detected: ${amountBurned.toFixed(2)} VOID, Total burned: ${voidTotalBurnedAmount.toFixed(2)} VOID`);
+    console.log(`Burn detected: ${amountBurned.toFixed(2)} VOID, Total burned: ${voidTotalBurnedAmount.toFixed(2)} VOID`);
+  } catch (error) {
+    console.error('Error in handleTransfer:', error);
+    // Decide whether to mark as processed or handle differently
+    processedTransactions.add(txHash);
+    saveProcessedTransactions();
+  }
 }
 
+// Swap Event Handler with Retry Logic
 async function handleSwapEvent(event) {
+  const txHash = event.transactionHash;
+  
+  if (processedTransactions.has(txHash)) {
+    console.log(`Already processed transaction: ${txHash}`);
+    return;
+  }
+
   try {
     console.log('Received Swap event:', JSON.stringify(event, null, 2));
-
-    const txHash = event.transactionHash;
-    console.log(`Transaction Hash: ${txHash}`);
-
-    if (processedTransactions.has(txHash)) {
-      console.log(`Already processed transaction: ${txHash}`);
-      return;
-    }
 
     const txReceipt = await provider.getTransactionReceipt(txHash);
     const fromAddress = txReceipt.from;
@@ -612,25 +620,26 @@ async function handleSwapEvent(event) {
     const amount0 = event.args.amount0;
     const amount1 = event.args.amount1;
 
-    // Get the addresses of token0 and token1 in the pool
+    // Determine token positions
     const token0Address = await voidPool.token0();
     const token1Address = await voidPool.token1();
 
-    // Determine which amount corresponds to VOID
     const isVoidToken0 = token0Address.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase();
     const voidAmount = isVoidToken0 ? amount0 : amount1;
-    const otherAmount = isVoidToken0 ? amount1 : amount0;
 
-    // Check if it's a buy transaction (VOID tokens coming out of the pool)
+    // Check for buy transaction
     const isVoidBuy = voidAmount.lt(0);
 
     if (!isVoidBuy || voidAmount.isZero()) {
       console.log(`Skipping sell, unrelated, or zero-amount transaction`);
+      // Mark as processed to avoid future handling
+      processedTransactions.add(txHash);
+      saveProcessedTransactions();
       return;
     }
 
+    // Format VOID amount
     const formattedVoidAmount = ethers.utils.formatUnits(voidAmount.abs(), VOID_TOKEN_DECIMALS);
-
     console.log(`VOID amount: ${formattedVoidAmount}`);
     console.log(`amount0: ${amount0.toString()}`);
     console.log(`amount1: ${amount1.toString()}`);
@@ -639,25 +648,49 @@ async function handleSwapEvent(event) {
     const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
     console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
 
-    // Check the balance of the actual 'from' address
-    const fromBalance = await voidToken.balanceOf(fromAddress);
+    // Implement retry logic for balanceOf
+    const maxAttempts = 3;
+    const delayMs = 1000; // 1 second
+    let fromBalance;
+    let attempt = 0;
+
+    while (attempt < maxAttempts) {
+      try {
+        fromBalance = await voidToken.balanceOf(fromAddress);
+        break; // Success
+      } catch (error) {
+        attempt++;
+        console.error(`Attempt ${attempt} - Error fetching balanceOf:`, error.message);
+        if (attempt < maxAttempts) {
+          console.log(`Retrying balanceOf in ${delayMs * attempt}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
+        } else {
+          throw new Error(`Failed to fetch balanceOf after ${maxAttempts} attempts`);
+        }
+      }
+    }
+
     const formattedFromBalance = Number(ethers.utils.formatUnits(fromBalance, VOID_TOKEN_DECIMALS));
     console.log(`From address (${fromAddress}) balance: ${formattedFromBalance.toFixed(2)} VOID`);
 
     // Determine if it's likely an arbitrage transaction
     const isLikelyArbitrage = formattedFromBalance < 505;
 
-    // Apply different thresholds for arbitrage and normal transactions
-    if (isLikelyArbitrage) {
-      if (transactionValueUSD < 250) {
-        console.log(`Skipping low-value arbitrage transaction: $${transactionValueUSD.toFixed(2)}`);
-        return;
-      }
-    } else {
-      if (transactionValueUSD < 50) {
-        console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)}`);
-        return;
-      }
+    // Apply transaction value thresholds
+    if (isLikelyArbitrage && transactionValueUSD < 250) {
+      console.log(`Skipping low-value arbitrage transaction: $${transactionValueUSD.toFixed(2)}`);
+      // Mark as processed
+      processedTransactions.add(txHash);
+      saveProcessedTransactions();
+      return;
+    }
+
+    if (!isLikelyArbitrage && transactionValueUSD < 50) {
+      console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)}`);
+      // Mark as processed
+      processedTransactions.add(txHash);
+      saveProcessedTransactions();
+      return;
     }
 
     const totalSupply = VOID_INITIAL_SUPPLY - voidTotalBurnedAmount;
@@ -695,17 +728,22 @@ ${isLikelyArbitrage ? '🤖 Arbitrage Buy' : '💸 Bought'} ${Number(formattedVo
 
     console.log(`VOID ${isLikelyArbitrage ? 'Arbitrage' : 'Buy'} detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), From Address: ${fromAddress}, Is Arbitrage: ${isLikelyArbitrage}`);
 
+    // Mark the transaction as processed
     processedTransactions.add(txHash);
-    if (processedTransactions.size % 100 === 0) {
-      saveProcessedTransactions();
-    }
+    saveProcessedTransactions();
 
   } catch (error) {
     console.error('Error in handleSwapEvent:', error);
-    console.error('Event that caused the error:', JSON.stringify(event, null, 2));
+
+    // To prevent infinite retries, mark the transaction as processed even if it failed
+    processedTransactions.add(txHash);
+    saveProcessedTransactions();
+
+    // Optionally, notify via Telegram or logging service about the failure
   }
 }
 
+// WebSocket Initialization Function
 function initializeWebSocket() {
   let customWsProvider = new CustomWebSocketProvider(WSS_ENDPOINT);
 
@@ -746,7 +784,7 @@ function initializeWebSocket() {
 
   customWsProvider.emitter.on('error', async (error) => {
     console.error('WebSocket encountered an error:', error);
-    // Optional: Handle specific error types or decide whether to reconnect
+    // Optionally, implement further error handling or reconnection logic
   });
 
   // Periodic check for WebSocket health
@@ -759,6 +797,7 @@ function initializeWebSocket() {
   }, 90000); // Check every 90 seconds
 }
 
+// VOID Claim Functions
 async function claimVoidWithRetry(maxRetries = 5, initialDelay = 1000) {
   let retries = 0;
   while (retries < maxRetries) {
@@ -850,7 +889,7 @@ async function claimLoop() {
   }
 }
 
-// YANG-specific functions
+// YANG-Specific Functions
 async function updateYangTotalBurnedAmount() {
   try {
     const apiUrl = `https://api.basescan.org/api?module=stats&action=tokensupply&contractaddress=${YANG_CONTRACT_ADDRESS}&apikey=${ETHERSCAN_API_KEY}`;
@@ -940,6 +979,7 @@ async function reportYangBurn(burnedAmount, previousTotalSupply) {
   addToYangBurnQueue(YANG_BURN_ANIMATION, burnAnimationMessageOptions);
 }
 
+// Scheduler Functions
 function scheduleNextCall(callback, delay) {
   setTimeout(() => {
     callback().finally(() => {
@@ -964,6 +1004,7 @@ function scheduleHourlyYangBurn() {
   }, delay);
 }
 
+// Initialization Function
 async function initializeAndStart() {
   try {
     console.log("Initializing combined VOID and YANG bot...");
@@ -990,9 +1031,22 @@ async function initializeAndStart() {
     console.log("Combined VOID and YANG bot started successfully!");
   } catch (error) {
     console.error("Error during initialization:", error);
-    setTimeout(initializeAndStart, 60000);
+    setTimeout(initializeAndStart, 60000); // Retry after 1 minute
   }
 }
 
-// Start the combined bot
+// Start the Bot
 initializeAndStart();
+
+// Graceful Shutdown
+process.on('SIGINT', () => {
+  console.log('Gracefully shutting down...');
+  // Perform any necessary cleanup here
+  process.exit();
+});
+
+process.on('SIGTERM', () => {
+  console.log('Gracefully shutting down...');
+  // Perform any necessary cleanup here
+  process.exit();
+});
