@@ -221,10 +221,12 @@ const YANG_ABI = [
   'function getCurrentPrice() view returns (uint256)',
 ];
 
+// Initialize Contracts
 const voidContract = new ethers.Contract(ENTROPY_ADDRESS, VOID_ABI, wallet);
 const yangContract = new ethers.Contract(YANG_CONTRACT_ADDRESS, YANG_ABI, wallet);
 const voidToken = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, provider);
 
+// State Variables
 let voidTotalBurnedAmount = 0;
 let yangTotalBurnedAmount = 0;
 let currentVoidUsdPrice = null;
@@ -273,6 +275,9 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
     super.destroy();
   }
 }
+
+// Initialize a global WebSocket provider variable to ensure only one instance exists
+let customWsProvider = null;
 
 // Utility Functions
 function loadProcessedTransactions() {
@@ -393,7 +398,6 @@ function getVoidRank(voidBalance) {
   return voidRank;
 }
 
-
 function getRankImageUrl(voidRank) {
   const rankToImageUrlMap = {
     "VOID Peasant": "https://voidonbase.com/Peasant.png",
@@ -465,7 +469,7 @@ function getRankImageUrl(voidRank) {
     "VOID Absolute": "https://voidonbase.com/Absolute.png",
     "VOID Omega": "https://voidonbase.com/Omega.png",
     "VOID Ultimate": "https://voidonbase.com/Ultimate.png"
-};
+  };
 
   return rankToImageUrlMap[voidRank] || "https://voidonbase.com/Peasant.jpg";
 }
@@ -534,6 +538,7 @@ async function sendVoidMessageFromQueue() {
     const message = voidMessageQueue.shift();
     try {
       await voidBot.sendPhoto(VOID_TELEGRAM_CHAT_ID, message.photo, message.options);
+      console.log(`[${new Date().toISOString()}] VOID photo message sent successfully.`);
     } catch (error) {
       console.error("Error sending VOID message:", error);
     }
@@ -591,7 +596,8 @@ async function handleTransfer(from, to, value, event) {
     console.log(`Burn detected: ${amountBurned.toFixed(2)} VOID, Total burned: ${voidTotalBurnedAmount.toFixed(2)} VOID`);
   } catch (error) {
     console.error('Error in handleTransfer:', error);
-    // Decide whether to mark as processed or handle differently
+    // Optionally, handle the error further or notify via Telegram
+    // Already marked as processed to prevent infinite retries
     processedTransactions.add(txHash);
     saveProcessedTransactions();
   }
@@ -600,11 +606,16 @@ async function handleTransfer(from, to, value, event) {
 // Swap Event Handler with Retry Logic
 async function handleSwapEvent(event) {
   const txHash = event.transactionHash;
-  
+
   if (processedTransactions.has(txHash)) {
     console.log(`Already processed transaction: ${txHash}`);
     return;
   }
+
+  // **Immediately mark as processed to prevent duplicate handling**
+  processedTransactions.add(txHash);
+  saveProcessedTransactions();
+  console.log(`[${new Date().toISOString()}] Transaction ${txHash} marked as processed.`);
 
   try {
     console.log('Received Swap event:', JSON.stringify(event, null, 2));
@@ -632,9 +643,7 @@ async function handleSwapEvent(event) {
 
     if (!isVoidBuy || voidAmount.isZero()) {
       console.log(`Skipping sell, unrelated, or zero-amount transaction`);
-      // Mark as processed to avoid future handling
-      processedTransactions.add(txHash);
-      saveProcessedTransactions();
+      // Already marked as processed
       return;
     }
 
@@ -679,17 +688,11 @@ async function handleSwapEvent(event) {
     // Apply transaction value thresholds
     if (isLikelyArbitrage && transactionValueUSD < 250) {
       console.log(`Skipping low-value arbitrage transaction: $${transactionValueUSD.toFixed(2)}`);
-      // Mark as processed
-      processedTransactions.add(txHash);
-      saveProcessedTransactions();
       return;
     }
 
     if (!isLikelyArbitrage && transactionValueUSD < 50) {
       console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)}`);
-      // Mark as processed
-      processedTransactions.add(txHash);
-      saveProcessedTransactions();
       return;
     }
 
@@ -728,24 +731,25 @@ ${isLikelyArbitrage ? '🤖 Arbitrage Buy' : '💸 Bought'} ${Number(formattedVo
 
     console.log(`VOID ${isLikelyArbitrage ? 'Arbitrage' : 'Buy'} detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), From Address: ${fromAddress}, Is Arbitrage: ${isLikelyArbitrage}`);
 
-    // Mark the transaction as processed
-    processedTransactions.add(txHash);
-    saveProcessedTransactions();
-
+    // Already marked as processed
   } catch (error) {
     console.error('Error in handleSwapEvent:', error);
 
-    // To prevent infinite retries, mark the transaction as processed even if it failed
-    processedTransactions.add(txHash);
-    saveProcessedTransactions();
-
     // Optionally, notify via Telegram or logging service about the failure
+    // Already marked as processed to prevent infinite retries
   }
 }
 
 // WebSocket Initialization Function
 function initializeWebSocket() {
-  let customWsProvider = new CustomWebSocketProvider(WSS_ENDPOINT);
+  // If there's an existing provider, destroy it before creating a new one
+  if (customWsProvider) {
+    customWsProvider.destroy();
+    console.log('Existing WebSocket provider destroyed.');
+  }
+
+  console.log(`[${new Date().toISOString()}] Initializing new WebSocket provider.`);
+  customWsProvider = new CustomWebSocketProvider(WSS_ENDPOINT);
 
   const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, customWsProvider);
   const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, customWsProvider);
@@ -789,7 +793,7 @@ function initializeWebSocket() {
 
   // Periodic check for WebSocket health
   setInterval(() => {
-    if (customWsProvider._websocket.readyState !== WebSocket.OPEN) {
+    if (customWsProvider && customWsProvider._websocket.readyState !== WebSocket.OPEN) {
       console.log('WebSocket connection is not open. Reinitializing...');
       customWsProvider.destroy(); // Clean up the existing provider
       initializeWebSocket(); // Reinitialize the WebSocket connection
@@ -969,7 +973,7 @@ async function reportYangBurn(burnedAmount, previousTotalSupply) {
   const newlyBurnedPercent = (burnedAmount / YANG_INITIAL_SUPPLY) * 100;
   const currentPrice = await getCurrentYangPrice();
 
-  const burnMessage = `YANG Burned!\n\n☀️☀️☀️☀️☀️\n🔥 Burned: ${burnedAmount.toFixed(8)} YANG (${newlyBurnedPercent.toFixed(4)}%)\n🔥 Total Burned: ${yangTotalBurnedAmount.toFixed(8)} YANG\n🔥 Total Percent Burned: ${percentBurned.toFixed(2)}%\n☯️ YANG to YIN ratio: ${currentPrice}`;
+  const burnMessage = `YANG Burned!\n\n☀️☀️☀️☀️☀️\n🔥 Burned: ${burnedAmount.toFixed(8)} YANG (${newlyBurnedPercent.toFixed(4)}%)\n🔥 Total Burned: ${yangTotalBurnedAmount.toFixed(8)} YANG\n🔥 Percent Burned: ${percentBurned.toFixed(2)}%\n☯️ YANG to YIN ratio: ${currentPrice}`;
 
   const burnAnimationMessageOptions = {
     caption: burnMessage,
@@ -1041,12 +1045,18 @@ initializeAndStart();
 // Graceful Shutdown
 process.on('SIGINT', () => {
   console.log('Gracefully shutting down...');
-  // Perform any necessary cleanup here
+  if (customWsProvider) {
+    customWsProvider.destroy();
+  }
+  // Perform any additional cleanup here
   process.exit();
 });
 
 process.on('SIGTERM', () => {
   console.log('Gracefully shutting down...');
-  // Perform any necessary cleanup here
+  if (customWsProvider) {
+    customWsProvider.destroy();
+  }
+  // Perform any additional cleanup here
   process.exit();
 });
