@@ -596,16 +596,15 @@ function addToYangBurnQueue(photo, options) {
   yangMessageQueue.push({ photo, options });
   sendYangBurnFromQueue();
 }
+function addToYangMessageQueue(message) {
+  yangMessageQueue.push(message);
+}
 
 async function sendVoidPhotoMessage(photo, options) {
   addToVoidMessageQueue({ photo, options });
   sendVoidMessageFromQueue();
 }
 
-async function sendFluxPhotoMessage(photo, options) {
-  addToYangMessageQueue({ photo, options });
-  sendYangMessageFromQueue();
-}
 
 async function sendVoidBurnFromQueue() {
   if (voidMessageQueue.length > 0 && !isVoidSendingMessage) {
@@ -633,12 +632,14 @@ async function sendYangMessageFromQueue() {
       await yangBot.sendPhoto(YANG_TELEGRAM_CHAT_ID, message.photo, message.options);
       console.log(`[${new Date().toISOString()}] FLUX photo message sent successfully.`);
     } catch (error) {
-      console.error("Error sending FLUX message:", error);
+      console.error(`[${new Date().toISOString()}] Error sending FLUX message:`, error);
+      // Optionally, you might want to re-queue the message or handle the error differently
+    } finally {
+      setTimeout(() => {
+        isYangSendingMessage = false;
+        sendYangMessageFromQueue(); // Process next message in queue, if any
+      }, 2000);
     }
-    setTimeout(() => {
-      isYangSendingMessage = false;
-      sendYangMessageFromQueue();
-    }, 2000);
   }
 }
 async function sendYangBurnFromQueue() {
@@ -915,8 +916,9 @@ if (transactionValueUSD < minimumYinUsdValue) {
       };
 
       console.log('Sending FLUX photo message...');
-    await sendFluxPhotoMessage(getFluxRankImageUrl(fluxRank), messageOptions);
-      console.log('FLUX photo message sent successfully.');
+addToYangMessageQueue({ photo: getFluxRankImageUrl(fluxRank), options: messageOptions });
+sendYangMessageFromQueue();
+console.log('FLUX photo message added to queue.');
 
       console.log(`FLUX Buy detected: ${yinAmount.toFixed(2)} YIN (${yangEquivalent.toFixed(2)} YANG) ($${transactionValueUSD.toFixed(2)}), From Address: ${fromAddress}`);
     }
