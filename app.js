@@ -17,7 +17,7 @@ const WSS_ENDPOINT = process.env.WSS_ENDPOINT;
 const VOID_CONTRACT_ADDRESS = process.env.VOID_CONTRACT_ADDRESS;
 const YANG_CONTRACT_ADDRESS = process.env.YANG_CONTRACT_ADDRESS || '0x384c9c33737121c4499c85d815ea57d1291875ab';
 const VOID_POOL_ADDRESS = process.env.VOID_POOL_ADDRESS;
-const YIN_CONTRACT_ADDRESS = process.env.YIN_CONTRACT_ADDRESS || '0xecb36ff12cbe4710e9be2411de46e6c180a4807f';
+const YIN_CONTRACT_ADDRESS = process.env.YIN_CONTRACT_ADDRESS || '0xeCb36fF12cbe4710E9Be2411de46E6C180a4807f';
 const YIN_POOL_ADDRESS = process.env.YIN_POOL_ADDRESS || '0x90fbb03389061020eec7ce9a7435966363410b87';
 const BURN_ADDRESS = '0x0000000000000000000000000000000000000000';
 const ENTROPY_ADDRESS = process.env.ENTROPY_ADDRESS;
@@ -695,9 +695,9 @@ async function getVoidPrice() {
 async function getYinPrice() {
   try {
     const response = await axios.get(
-      `https://pro-api.coingecko.com/api/v3/onchain/simple/networks/base/token_price/0x90fbb03389061020eec7ce9a7435966363410b87?x_cg_pro_api_key=${COINGECKO_API}`
+      `https://pro-api.coingecko.com/api/v3/onchain/simple/networks/base/token_price/0xeCb36fF12cbe4710E9Be2411de46E6C180a4807f?x_cg_pro_api_key=${COINGECKO_API}`
     );
-    const tokenAddress = '0x90fbb03389061020eec7ce9a7435966363410b87'.toLowerCase();
+    const tokenAddress = '0xeCb36fF12cbe4710E9Be2411de46E6C180a4807f'.toLowerCase();
     const yinPrice = response.data.data.attributes.token_prices[tokenAddress];
     return { yinPrice: parseFloat(yinPrice) };
   } catch (error) {
