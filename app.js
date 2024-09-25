@@ -907,8 +907,7 @@ if (transactionValueUSD < minimumYinUsdValue) {
 <a href="${chartLink}">📈 Chart</a>
 <a href="${txHashLink}">💱 TX Hash</a>
 ⚖️ Total YANG Balance: ${totalYangBalance.toFixed(2)}
-🛡️ FLUX Rank: ${fluxRank}
-🚰 Pool: YIN/ETH`;
+🛡️ FLUX Rank: ${fluxRank}`;
 
       const messageOptions = {
         caption: message,
