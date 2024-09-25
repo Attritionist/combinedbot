@@ -15,14 +15,18 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY;
 const RPC_URL = process.env.RPC_URL || 'https://mainnet.base.org';
 const WSS_ENDPOINT = process.env.WSS_ENDPOINT;
 const VOID_CONTRACT_ADDRESS = process.env.VOID_CONTRACT_ADDRESS;
-const YANG_CONTRACT_ADDRESS = process.env.YANG_CONTRACT_ADDRESS;
+const YANG_CONTRACT_ADDRESS = process.env.YANG_CONTRACT_ADDRESS || '0x384c9c33737121c4499c85d815ea57d1291875ab';
 const VOID_POOL_ADDRESS = process.env.VOID_POOL_ADDRESS;
+const YIN_CONTRACT_ADDRESS = process.env.YIN_CONTRACT_ADDRESS || '0xecb36ff12cbe4710e9be2411de46e6c180a4807f';
+const YIN_POOL_ADDRESS = process.env.YIN_POOL_ADDRESS || '0x90fbb03389061020eec7ce9a7435966363410b87';
 const BURN_ADDRESS = '0x0000000000000000000000000000000000000000';
 const ENTROPY_ADDRESS = process.env.ENTROPY_ADDRESS;
+const FLUX_API_ENDPOINT = process.env.FLUX_API_ENDPOINT || 'https://voidapi.onrender.com/api/yang-data';
 
 // Constants
 const VOID_TOKEN_DECIMALS = 18;
 const YANG_TOKEN_DECIMALS = 8;
+const YIN_TOKEN_DECIMALS = 8; // Assuming YIN has the same decimals as YANG
 const VOID_INITIAL_SUPPLY = 100000000;
 const YANG_INITIAL_SUPPLY = 2500000;
 const VOID_BURN_ANIMATION = "https://voidonbase.com/burn.jpg";
@@ -223,11 +227,14 @@ const YANG_ABI = [
 const voidContract = new ethers.Contract(ENTROPY_ADDRESS, VOID_ABI, wallet);
 const yangContract = new ethers.Contract(YANG_CONTRACT_ADDRESS, YANG_ABI, wallet);
 const voidToken = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, provider);
+const yinToken = new ethers.Contract(YIN_CONTRACT_ADDRESS, ERC20_ABI, provider);
+const yangToken = new ethers.Contract(YANG_CONTRACT_ADDRESS, ERC20_ABI, provider);
 
 // State Variables
 let voidTotalBurnedAmount = 0;
 let yangTotalBurnedAmount = 0;
 let currentVoidUsdPrice = null;
+let currentYinUsdPrice = null;
 const voidMessageQueue = [];
 const yangMessageQueue = [];
 let isVoidSendingMessage = false;
@@ -394,6 +401,110 @@ function getVoidRank(voidBalance) {
 
   return voidRank;
 }
+function getFluxRank(yangBalance) {
+  const FLUX_RANKS = {
+    "FLUX Eternal": 200000,
+    "FLUX Sovereign": 100000,
+    "FLUX Overseer": 90000,
+    "FLUX Ascendant": 85000,
+    "FLUX Transcendent": 80000,
+    "FLUX Oracle": 75000,
+    "FLUX Sage": 70000,
+    "FLUX Luminary": 65000,
+    "FLUX Visionary": 60000,
+    "FLUX Mastermind": 55000,
+    "FLUX Architect": 50000,
+    "FLUX Innovator": 45000,
+    "FLUX Alchemist": 40000,
+    "FLUX Transmuter": 35000,
+    "FLUX Channeler": 30000,
+    "FLUX Conductor": 27500,
+    "FLUX Amplifier": 25000,
+    "FLUX Attunement": 22500,
+    "FLUX Resonator": 20000,
+    "FLUX Modulator": 17500,
+    "FLUX Regulator": 15000,
+    "FLUX Calibrator": 12500,
+    "FLUX Equalizer": 10000,
+    "FLUX Justiciar": 7500,
+    "FLUX Arbiter": 6666,
+    "FLUX Sentinel": 5000,
+    "FLUX Warden": 3333,
+    "FLUX Guardian": 2500,
+    "FLUX Keeper": 2000,
+    "FLUX Curator": 1750,
+    "FLUX Mediator": 1500,
+    "FLUX Synchronizer": 1250,
+    "FLUX Balancer": 1000,
+    "FLUX Harmonizer": 750,
+    "FLUX Cultivator": 666,
+    "FLUX Seeker": 500,
+    "FLUX Disciple": 400,
+    "FLUX Acolyte": 300,
+    "FLUX Adept": 250,
+    "FLUX Apprentice": 200,
+    "FLUX Novice": 150,
+    "FLUX Initiate": 100
+  };
+
+  let fluxRank = "FLUX Initiate";
+  for (const [rank, threshold] of Object.entries(FLUX_RANKS)) {
+    if (yangBalance >= threshold) {
+      fluxRank = rank;
+      break;
+    }
+  }
+
+  return fluxRank;
+}
+function getFluxRankImageUrl(fluxRank) {
+  const rankToImageUrlMap = {
+    "FLUX Initiate": "https://fluxonbase.com/Initiate.png",
+    "FLUX Novice": "https://fluxonbase.com/Novice.png",
+    "FLUX Apprentice": "https://fluxonbase.com/Apprentice.png",
+    "FLUX Adept": "https://fluxonbase.com/Adept.png",
+    "FLUX Acolyte": "https://fluxonbase.com/Acolyte.png",
+    "FLUX Disciple": "https://fluxonbase.com/Disciple.png",
+    "FLUX Seeker": "https://fluxonbase.com/Seeker.png",
+    "FLUX Cultivator": "https://fluxonbase.com/Cultivator.png",
+    "FLUX Harmonizer": "https://fluxonbase.com/Harmonizer.png",
+    "FLUX Balancer": "https://fluxonbase.com/Balancer.png",
+    "FLUX Synchronizer": "https://fluxonbase.com/Synchronizer.png",
+    "FLUX Mediator": "https://fluxonbase.com/Mediator.png",
+    "FLUX Curator": "https://fluxonbase.com/Curator.png",
+    "FLUX Keeper": "https://fluxonbase.com/Keeper.png",
+    "FLUX Guardian": "https://fluxonbase.com/Guardian.png",
+    "FLUX Warden": "https://fluxonbase.com/Warden.png",
+    "FLUX Sentinel": "https://fluxonbase.com/Sentinel.png",
+    "FLUX Arbiter": "https://fluxonbase.com/Arbiter.png",
+    "FLUX Justiciar": "https://fluxonbase.com/Justiciar.png",
+    "FLUX Equalizer": "https://fluxonbase.com/Equalizer.png",
+    "FLUX Calibrator": "https://fluxonbase.com/Calibrator.png",
+    "FLUX Regulator": "https://fluxonbase.com/Regulator.png",
+    "FLUX Modulator": "https://fluxonbase.com/Modulator.png",
+    "FLUX Resonator": "https://fluxonbase.com/Resonator.png",
+    "FLUX Attunement": "https://fluxonbase.com/Attunement.png",
+    "FLUX Amplifier": "https://fluxonbase.com/Amplifier.png",
+    "FLUX Conductor": "https://fluxonbase.com/Conductor.png",
+    "FLUX Channeler": "https://fluxonbase.com/Channeler.png",
+    "FLUX Transmuter": "https://fluxonbase.com/Transmuter.png",
+    "FLUX Alchemist": "https://fluxonbase.com/Alchemist.png",
+    "FLUX Innovator": "https://fluxonbase.com/Innovator.png",
+    "FLUX Architect": "https://fluxonbase.com/Architect.png",
+    "FLUX Mastermind": "https://fluxonbase.com/Mastermind.png",
+    "FLUX Visionary": "https://fluxonbase.com/Visionary.png",
+    "FLUX Luminary": "https://fluxonbase.com/Luminary.png",
+    "FLUX Sage": "https://fluxonbase.com/Sage.png",
+    "FLUX Oracle": "https://fluxonbase.com/Oracle.png",
+    "FLUX Transcendent": "https://fluxonbase.com/Transcendent.png",
+    "FLUX Ascendant": "https://fluxonbase.com/Ascendant.png",
+    "FLUX Overseer": "https://fluxonbase.com/Overseer.png",
+    "FLUX Sovereign": "https://fluxonbase.com/Sovereign.png",
+    "FLUX Eternal": "https://fluxonbase.com/Eternal.png"
+  };
+
+  return rankToImageUrlMap[fluxRank] || "https://fluxonbase.com/Initiate.png";
+}
 
 function getRankImageUrl(voidRank) {
   const rankToImageUrlMap = {
@@ -486,6 +597,16 @@ function addToYangBurnQueue(photo, options) {
   sendYangBurnFromQueue();
 }
 
+async function sendVoidPhotoMessage(photo, options) {
+  addToVoidMessageQueue({ photo, options });
+  sendVoidMessageFromQueue();
+}
+
+async function sendFluxPhotoMessage(photo, options) {
+  addToYangMessageQueue({ photo, options });
+  sendYangMessageFromQueue();
+}
+
 async function sendVoidBurnFromQueue() {
   if (voidMessageQueue.length > 0 && !isVoidSendingMessage) {
     isVoidSendingMessage = true;
@@ -504,7 +625,22 @@ async function sendVoidBurnFromQueue() {
     }, 2000);
   }
 }
-
+async function sendYangMessageFromQueue() {
+  if (yangMessageQueue.length > 0 && !isYangSendingMessage) {
+    isYangSendingMessage = true;
+    const message = yangMessageQueue.shift();
+    try {
+      await yangBot.sendPhoto(YANG_TELEGRAM_CHAT_ID, message.photo, message.options);
+      console.log(`[${new Date().toISOString()}] FLUX photo message sent successfully.`);
+    } catch (error) {
+      console.error("Error sending FLUX message:", error);
+    }
+    setTimeout(() => {
+      isYangSendingMessage = false;
+      sendYangMessageFromQueue();
+    }, 2000);
+  }
+}
 async function sendYangBurnFromQueue() {
   if (yangMessageQueue.length > 0 && !isYangSendingMessage) {
     isYangSendingMessage = true;
@@ -524,10 +660,6 @@ async function sendYangBurnFromQueue() {
   }
 }
 
-async function sendVoidPhotoMessage(photo, options) {
-  addToVoidMessageQueue({ photo, options });
-  sendVoidMessageFromQueue();
-}
 
 async function sendVoidMessageFromQueue() {
   if (voidMessageQueue.length > 0 && !isVoidSendingMessage) {
@@ -560,7 +692,19 @@ async function getVoidPrice() {
     return null;
   }
 }
-
+async function getYinPrice() {
+  try {
+    const response = await axios.get(
+      `https://pro-api.coingecko.com/api/v3/onchain/simple/networks/base/token_price/0x90fbb03389061020eec7ce9a7435966363410b87?x_cg_pro_api_key=${COINGECKO_API}`
+    );
+    const tokenAddress = '0x90fbb03389061020eec7ce9a7435966363410b87'.toLowerCase();
+    const yinPrice = response.data.data.attributes.token_prices[tokenAddress];
+    return { yinPrice: parseFloat(yinPrice) };
+  } catch (error) {
+    console.error("Error fetching crypto prices:", error);
+    return null;
+  }
+}
 async function initializeTotalBurnedAmount() {
   try {
     const burnedBalance = await voidToken.balanceOf(BURN_ADDRESS);
@@ -568,6 +712,25 @@ async function initializeTotalBurnedAmount() {
     console.log(`Initialized total burned VOID amount: ${voidTotalBurnedAmount.toFixed(2)}`);
   } catch (error) {
     console.error("Error initializing total burned amount:", error);
+  }
+}
+// Flux-Specific Functions
+async function getFluxData() {
+  try {
+    const response = await axios.get(FLUX_API_ENDPOINT);
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching Flux data:", error);
+    return null;
+  }
+}
+async function getYangBalance(address) {
+  try {
+    const balance = await yangToken.balanceOf(address);
+    return Number(ethers.utils.formatUnits(balance, YANG_TOKEN_DECIMALS));
+  } catch (error) {
+    console.error("Error fetching YANG balance:", error);
+    return 0;
   }
 }
 
@@ -598,7 +761,7 @@ async function handleTransfer(from, to, value, event) {
   }
 }
 
-// Swap Event Handler with Retry Logic
+// Swap Event Handler
 async function handleSwapEvent(event) {
   const txHash = event.transactionHash;
 
@@ -607,7 +770,6 @@ async function handleSwapEvent(event) {
     return;
   }
 
-  // Mark as processed before handling to prevent duplicates
   markTransactionAsProcessed(txHash);
   console.log(`[${new Date().toISOString()}] Transaction ${txHash} marked as processed.`);
 
@@ -620,90 +782,72 @@ async function handleSwapEvent(event) {
     console.log(`Transaction initiator: ${fromAddress}`);
     console.log(`Recipient: ${recipient}`);
 
-    const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, provider);
+    const pool = new ethers.Contract(event.address, UNISWAP_V3_POOL_ABI, provider);
 
     const amount0 = event.args.amount0;
     const amount1 = event.args.amount1;
 
-    // Determine token positions
-    const token0Address = await voidPool.token0();
-    const token1Address = await voidPool.token1();
+    const token0Address = await pool.token0();
+    const token1Address = await pool.token1();
 
-    const isVoidToken0 = token0Address.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase();
-    const voidAmount = isVoidToken0 ? amount0 : amount1;
+    let isVoidBuy = false;
+    let isYinBuy = false;
+    let tokenAmount;
+    let tokenDecimals;
 
-    // Check for buy transaction
-    const isVoidBuy = voidAmount.lt(0);
+    if (event.address.toLowerCase() === VOID_POOL_ADDRESS.toLowerCase()) {
+      isVoidBuy = true;
+      tokenAmount = token0Address.toLowerCase() === VOID_CONTRACT_ADDRESS.toLowerCase() ? amount0 : amount1;
+      tokenDecimals = VOID_TOKEN_DECIMALS;
+    } else if (event.address.toLowerCase() === YIN_POOL_ADDRESS.toLowerCase()) {
+      isYinBuy = true;
+      tokenAmount = token0Address.toLowerCase() === YIN_CONTRACT_ADDRESS.toLowerCase() ? amount0 : amount1;
+      tokenDecimals = YIN_TOKEN_DECIMALS;
+    }
 
-    if (!isVoidBuy || voidAmount.isZero()) {
+    if ((!isVoidBuy && !isYinBuy) || tokenAmount.isZero() || tokenAmount.gt(0)) {
       console.log(`Skipping sell, unrelated, or zero-amount transaction`);
-      // Already marked as processed
       return;
     }
 
-    // Format VOID amount
-    const formattedVoidAmount = ethers.utils.formatUnits(voidAmount.abs(), VOID_TOKEN_DECIMALS);
-    console.log(`VOID amount: ${formattedVoidAmount}`);
-    console.log(`amount0: ${amount0.toString()}`);
-    console.log(`amount1: ${amount1.toString()}`);
-    console.log(`Current VOID USD price: ${currentVoidUsdPrice}`);
+    const formattedAmount = ethers.utils.formatUnits(tokenAmount.abs(), tokenDecimals);
+    console.log(`Token amount: ${formattedAmount}`);
 
-    const transactionValueUSD = Number(formattedVoidAmount) * currentVoidUsdPrice;
-    console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
+    if (isVoidBuy) {
+      // Existing VOID buy logic
+      const transactionValueUSD = Number(formattedAmount) * currentVoidUsdPrice;
+      console.log(`Transaction value in USD: $${transactionValueUSD.toFixed(2)}`);
 
-    // Implement retry logic for balanceOf
-    const maxAttempts = 3;
-    const delayMs = 1000; // 1 second
-    let fromBalance;
-    let attempt = 0;
+      const fromBalance = await voidToken.balanceOf(fromAddress);
+      const formattedFromBalance = Number(ethers.utils.formatUnits(fromBalance, VOID_TOKEN_DECIMALS));
+      console.log(`From address (${fromAddress}) balance: ${formattedFromBalance.toFixed(2)} VOID`);
 
-    while (attempt < maxAttempts) {
-      try {
-        fromBalance = await voidToken.balanceOf(fromAddress);
-        break; // Success
-      } catch (error) {
-        attempt++;
-        console.error(`Attempt ${attempt} - Error fetching balanceOf:`, error.message);
-        if (attempt < maxAttempts) {
-          console.log(`Retrying balanceOf in ${delayMs * attempt}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
-        } else {
-          throw new Error(`Failed to fetch balanceOf after ${maxAttempts} attempts`);
-        }
+      const isLikelyArbitrage = formattedFromBalance < 505;
+
+      if (isLikelyArbitrage && transactionValueUSD < 250) {
+        console.log(`Skipping low-value arbitrage transaction: $${transactionValueUSD.toFixed(2)}`);
+        return;
       }
-    }
 
-    const formattedFromBalance = Number(ethers.utils.formatUnits(fromBalance, VOID_TOKEN_DECIMALS));
-    console.log(`From address (${fromAddress}) balance: ${formattedFromBalance.toFixed(2)} VOID`);
+      if (!isLikelyArbitrage && transactionValueUSD < 50) {
+        console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)}`);
+        return;
+      }
 
-    // Determine if it's likely an arbitrage transaction
-    const isLikelyArbitrage = formattedFromBalance < 505;
+      const totalSupply = VOID_INITIAL_SUPPLY - voidTotalBurnedAmount;
+      const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
+      const marketCap = currentVoidUsdPrice * totalSupply;
 
-    // Apply transaction value thresholds
-    if (isLikelyArbitrage && transactionValueUSD < 250) {
-      console.log(`Skipping low-value arbitrage transaction: $${transactionValueUSD.toFixed(2)}`);
-      return;
-    }
+      const imageUrl = isLikelyArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(getVoidRank(formattedFromBalance));
 
-    if (!isLikelyArbitrage && transactionValueUSD < 50) {
-      console.log(`Skipping low-value transaction: $${transactionValueUSD.toFixed(2)}`);
-      return;
-    }
+      const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 100), 48);
+      const emojiString = isLikelyArbitrage ? "🤖🔩".repeat(emojiPairCount) : "🟣🔥".repeat(emojiPairCount);
 
-    const totalSupply = VOID_INITIAL_SUPPLY - voidTotalBurnedAmount;
-    const percentBurned = (voidTotalBurnedAmount / VOID_INITIAL_SUPPLY) * 100;
-    const marketCap = currentVoidUsdPrice * totalSupply;
+      const txHashLink = `https://basescan.org/tx/${txHash}`;
+      const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
 
-    const imageUrl = isLikelyArbitrage ? "https://voidonbase.com/arbitrage.jpg" : getRankImageUrl(getVoidRank(formattedFromBalance));
-
-    const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 100), 48); // Max 48 pairs (96 emojis)
-    const emojiString = isLikelyArbitrage ? "🤖🔩".repeat(emojiPairCount) : "🟣🔥".repeat(emojiPairCount);
-
-    const txHashLink = `https://basescan.org/tx/${txHash}`;
-    const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
-
-    const message = `${emojiString}
-💸 Bought ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) ${!isLikelyArbitrage ? `(<a href="https://debank.com/profile/${fromAddress}">View Address</a>)` : ''}
+      const message = `${emojiString}
+💸 Bought ${Number(formattedAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) ${!isLikelyArbitrage ? `(<a href="https://debank.com/profile/${fromAddress}">View Address</a>)` : ''}
 🟣 VOID Price: $${currentVoidUsdPrice.toFixed(5)}
 💰 Market Cap: $${marketCap.toFixed(0)}
 🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID
@@ -714,21 +858,62 @@ async function handleSwapEvent(event) {
 🛡️ VOID Rank: ${getVoidRank(formattedFromBalance)}` : ''}
 🚰 Pool: VOID/ETH${isLikelyArbitrage ? '\n⚠️ Arbitrage Transaction' : ''}`;
 
-    const messageOptions = {
-      caption: message,
-      parse_mode: "HTML",
-    };
+      const messageOptions = {
+        caption: message,
+        parse_mode: "HTML",
+      };
 
-    console.log('Sending VOID photo message...');
-    await sendVoidPhotoMessage(imageUrl, messageOptions);
-    console.log('VOID photo message sent successfully.');
+      console.log('Sending VOID photo message...');
+      await sendVoidPhotoMessage(imageUrl, messageOptions);
+      console.log('VOID photo message sent successfully.');
 
-    console.log(`VOID ${isLikelyArbitrage ? 'Arbitrage' : 'Buy'} detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), From Address: ${fromAddress}, Is Arbitrage: ${isLikelyArbitrage}`);
+      console.log(`VOID ${isLikelyArbitrage ? 'Arbitrage' : 'Buy'} detected: ${formattedAmount} VOID ($${transactionValueUSD.toFixed(2)}), From Address: ${fromAddress}, Is Arbitrage: ${isLikelyArbitrage}`);
+    } else if (isYinBuy) {
+      const fluxData = await getFluxData();
+      if (!fluxData) return;
+
+      const yangPrice = parseFloat(fluxData.yangPrice);
+      const yinAmount = parseFloat(formattedAmount);
+      const yangEquivalent = yinAmount / yangPrice;
+
+      const existingYangBalance = await getYangBalance(fromAddress);
+      const totalYangBalance = existingYangBalance + yangEquivalent;
+
+      const fluxRank = getFluxRank(totalYangBalance);
+
+      const transactionValueUSD = yinAmount * currentYinUsdPrice;
+
+      const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 100), 48);
+      const emojiString = "☯️🌊".repeat(emojiPairCount);
+
+      const txHashLink = `https://basescan.org/tx/${txHash}`;
+      const chartLink = "https://dexscreener.com/base/0x90fbb03389061020eec7ce9a7435966363410b87";
+
+      const message = `${emojiString}
+💸 Bought ${yinAmount.toFixed(2)} YIN (${yangEquivalent.toFixed(2)} YANG) ($${transactionValueUSD.toFixed(2)}) (<a href="https://debank.com/profile/${fromAddress}">View Address</a>)
+☯️ YIN Price: $${currentYinUsdPrice.toFixed(5)}
+💰 Market Cap: $${(fluxData.circulatingSupply * currentYinUsdPrice).toFixed(0)}
+🔥 Total Burned: ${fluxData.burnedAmount} YANG
+🔥 Percent Burned: ${(parseFloat(fluxData.burnedAmount) / YANG_INITIAL_SUPPLY * 100).toFixed(3)}%
+<a href="${chartLink}">📈 Chart</a>
+<a href="${txHashLink}">💱 TX Hash</a>
+⚖️ Total YANG Balance: ${totalYangBalance.toFixed(2)}
+🛡️ FLUX Rank: ${fluxRank}
+🚰 Pool: YIN/ETH`;
+
+      const messageOptions = {
+        caption: message,
+        parse_mode: "HTML",
+      };
+
+      console.log('Sending FLUX photo message...');
+    await sendFluxPhotoMessage(getFluxRankImageUrl(fluxRank), messageOptions);
+      console.log('FLUX photo message sent successfully.');
+
+      console.log(`FLUX Buy detected: ${yinAmount.toFixed(2)} YIN (${yangEquivalent.toFixed(2)} YANG) ($${transactionValueUSD.toFixed(2)}), From Address: ${fromAddress}`);
+    }
   } catch (error) {
     console.error('Error in handleSwapEvent:', error);
-
-    // Optionally, notify via Telegram or logging service about the failure
-    // Already marked as processed to prevent infinite retries
   }
 }
 
@@ -739,7 +924,6 @@ function initializeWebSocket() {
     return;
   }
 
-  // If there's an existing provider, destroy it before creating a new one
   if (wsProvider) {
     wsProvider.removeAllListeners();
     wsProvider.destroy();
@@ -750,13 +934,14 @@ function initializeWebSocket() {
   wsProvider = new ethers.providers.WebSocketProvider(WSS_ENDPOINT);
 
   const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, wsProvider);
+  const yinPool = new ethers.Contract(YIN_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, wsProvider);
   const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, wsProvider);
 
-  // Bind event handlers to prevent multiple bindings
   const swapHandler = (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
     handleSwapEvent({
       args: { sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick },
-      transactionHash: event.transactionHash
+      transactionHash: event.transactionHash,
+      address: event.address
     });
   };
 
@@ -767,22 +952,20 @@ function initializeWebSocket() {
   };
 
   voidPool.on('Swap', swapHandler);
+  yinPool.on('Swap', swapHandler);
   voidTokenWS.on('Transfer', transferHandler);
 
   listenersAttached = true;
   console.log('WebSocket connection established and listening for Swap and Transfer (to burn address) events.');
 
-  // Handle provider events for logging purposes
   wsProvider.on('error', (error) => {
     console.error('WebSocket encountered an error:', error);
   });
 
   wsProvider.on('close', (code) => {
     console.error(`WebSocket connection closed with code ${code}. Ethers.js will attempt to reconnect automatically.`);
-    listenersAttached = false; // Allow re-attachment on reconnection
+    listenersAttached = false;
   });
-
-  // No need for periodic health checks
 }
 
 // VOID Claim Functions
@@ -995,7 +1178,7 @@ function scheduleHourlyYangBurn() {
 // Initialization Function
 async function initializeAndStart() {
   try {
-    console.log("Initializing combined VOID and YANG bot...");
+    console.log("Initializing combined VOID and FLUX bot...");
 
     loadProcessedTransactions();
 
@@ -1008,23 +1191,29 @@ async function initializeAndStart() {
 
     initializeWebSocket();
 
-    // Schedule the processed transactions reset
-    setInterval(resetProcessedTransactions, 24 * 60 * 60 * 1000); // Every 24 hours
+    setInterval(resetProcessedTransactions, 24 * 60 * 60 * 1000);
 
     setInterval(async () => {
-      const priceInfo = await getVoidPrice();
-      if (priceInfo !== null) {
-        currentVoidUsdPrice = priceInfo.voidPrice;
+      const voidPriceInfo = await getVoidPrice();
+      if (voidPriceInfo !== null) {
+        currentVoidUsdPrice = voidPriceInfo.voidPrice;
         console.log(`Updated current VOID USD price to: ${currentVoidUsdPrice}`);
+      }
+
+      const yinPriceInfo = await getYinPrice();
+      if (yinPriceInfo !== null) {
+        currentYinUsdPrice = yinPriceInfo.yinPrice;
+        console.log(`Updated current YIN USD price to: ${currentYinUsdPrice}`);
       }
     }, 60000);
 
-    console.log("Combined VOID and YANG bot started successfully!");
+    console.log("Combined VOID and FLUX bot started successfully!");
   } catch (error) {
     console.error("Error during initialization:", error);
-    setTimeout(initializeAndStart, 60000); // Retry after 1 minute
+    setTimeout(initializeAndStart, 60000);
   }
 }
+
 
 // Start the Bot
 initializeAndStart();
