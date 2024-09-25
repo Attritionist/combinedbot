@@ -2,8 +2,6 @@ const axios = require("axios");
 const TelegramBot = require("node-telegram-bot-api");
 const ethers = require('ethers');
 const fs = require('fs');
-const WebSocket = require('ws');
-const EventEmitter = require('events');
 require("dotenv").config();
 
 // Environment variables
@@ -535,7 +533,6 @@ async function initializeTotalBurnedAmount() {
   }
 }
 
-
 async function handleTransfer(from, to, value, event) {
   const txHash = event.transactionHash;
   if (processedTransactions.has(txHash)) return;
@@ -736,23 +733,16 @@ function initializeWebSocket() {
 
   console.log('WebSocket connection established and listening for Swap and Transfer (to burn address) events.');
 
-  // Handle provider events
-  wsProvider._websocket.on('close', (code) => {
-    console.error(`WebSocket connection closed with code ${code}. Reconnecting...`);
-    // ethers.js automatically attempts to reconnect, so no need to manually reinitialize
-  });
-
-  wsProvider._websocket.on('error', (error) => {
+  // Handle provider events for logging purposes
+  wsProvider.on('error', (error) => {
     console.error('WebSocket encountered an error:', error);
-    // ethers.js handles reconnection; additional error handling can be done here if needed
   });
 
-  // Periodic check for WebSocket health
-  setInterval(() => {
-    if (wsProvider && wsProvider._websocket.readyState !== WebSocket.OPEN) {
-      console.log('WebSocket connection is not open. ethers.js should handle reconnection automatically.');
-    }
-  }, 90000); // Check every 90 seconds
+  wsProvider.on('close', (code) => {
+    console.error(`WebSocket connection closed with code ${code}. Ethers.js will attempt to reconnect automatically.`);
+  });
+
+  // No need for periodic health checks
 }
 
 // VOID Claim Functions
