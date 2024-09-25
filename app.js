@@ -6,6 +6,7 @@ const WebSocket = require('ws');
 const EventEmitter = require('events');
 require("dotenv").config();
 
+
 // Environment variables
 const VOID_TELEGRAM_CHAT_ID = process.env.VOID_TELEGRAM_CHAT_ID;
 const VOID_TELEGRAM_BOT_TOKEN = process.env.VOID_TELEGRAM_BOT_TOKEN;
@@ -243,9 +244,11 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
     super(url, network);
     this.heartbeatInterval = null;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
-    this.reconnectDelay = 5000;
+    this.maxReconnectAttempts = 10; // Increased max attempts
+    this.reconnectDelay = 5000; // Initial delay: 5 seconds
+    this.maxReconnectDelay = 60000; // Max delay: 60 seconds
     this.emitter = new EventEmitter();
+    this.isReconnecting = false;
     this.setupHeartbeat();
     this.setupReconnection();
   }
@@ -260,14 +263,51 @@ class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
 
   setupReconnection() {
     this._websocket.on('close', (code) => {
-      console.error(`WebSocket connection closed with code ${code}. Emitting 'close' event.`);
+      console.error(`WebSocket connection closed with code ${code}.`);
       this.emitter.emit('close', code);
+      this.reconnect();
     });
 
     this._websocket.on('error', (error) => {
-      console.error('WebSocket error:', error);
+      console.error('WebSocket encountered an error:', error);
       this.emitter.emit('error', error);
+      // No need to call reconnect here; 'close' event will handle it
     });
+  }
+
+  async reconnect() {
+    if (this.isReconnecting) return;
+    this.isReconnecting = true;
+
+    while (this.reconnectAttempts < this.maxReconnectAttempts) {
+      const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts), this.maxReconnectDelay);
+      console.log(`Reconnection attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts} in ${delay / 1000} seconds...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      try {
+        this.reconnectAttempts++;
+        await this._websocket.close(); // Ensure the current socket is closed
+        this._websocket = new WebSocket(this.connection.url);
+
+        // Reattach event listeners
+        this.setupHeartbeat();
+        this.setupReconnection();
+
+        // Reset reconnection attempts on successful connection
+        if (this._websocket.readyState === WebSocket.OPEN) {
+          console.log('WebSocket reconnected successfully.');
+          this.reconnectAttempts = 0;
+          this.isReconnecting = false;
+          return;
+        }
+      } catch (error) {
+        console.error(`Reconnection attempt ${this.reconnectAttempts} failed:`, error.message);
+      }
+    }
+
+    console.error('Max reconnection attempts reached. Emitting close event.');
+    this.emitter.emit('close', 'Max reconnection attempts reached.');
+    this.isReconnecting = false;
   }
 
   destroy() {
@@ -744,6 +784,7 @@ ${isLikelyArbitrage ? '🤖 Arbitrage Buy' : '💸 Bought'} ${Number(formattedVo
 function initializeWebSocket() {
   // If there's an existing provider, destroy it before creating a new one
   if (customWsProvider) {
+    customWsProvider.removeAllListeners(); // Remove all listeners to prevent memory leaks
     customWsProvider.destroy();
     console.log('Existing WebSocket provider destroyed.');
   }
@@ -754,49 +795,46 @@ function initializeWebSocket() {
   const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, customWsProvider);
   const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, customWsProvider);
 
-  voidPool.on('Swap', (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
+  // Bind event handlers to prevent multiple bindings
+  const swapHandler = (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
     handleSwapEvent({
       args: { sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick },
       transactionHash: event.transactionHash
     });
-  });
+  };
 
-  voidTokenWS.on('Transfer', (from, to, value, event) => {
+  const transferHandler = (from, to, value, event) => {
     if (to.toLowerCase() === BURN_ADDRESS.toLowerCase()) {
       handleTransfer(from, to, value, event);
     }
-  });
+  };
+
+  voidPool.on('Swap', swapHandler);
+  voidTokenWS.on('Transfer', transferHandler);
 
   console.log('WebSocket connection established and listening for Swap and Transfer (to burn address) events.');
 
   // Listen for close and error events to handle reconnection
   customWsProvider.emitter.on('close', async (code) => {
     if (customWsProvider.reconnectAttempts < customWsProvider.maxReconnectAttempts) {
-      customWsProvider.reconnectAttempts++;
-      const delay = customWsProvider.reconnectDelay * customWsProvider.reconnectAttempts;
-      console.log(`Reconnection attempt ${customWsProvider.reconnectAttempts}/${customWsProvider.maxReconnectAttempts} in ${delay}ms`);
-
-      setTimeout(() => {
-        initializeWebSocket(); // Attempt to reinitialize WebSocket
-      }, delay);
+      // Reconnection is handled within CustomWebSocketProvider
+      console.log(`WebSocket closed with code ${code}. Reconnection handled internally.`);
     } else {
       console.error('Max reconnection attempts reached. Restarting the WebSocket setup.');
-      customWsProvider.reconnectAttempts = 0;
       initializeWebSocket();
     }
   });
 
   customWsProvider.emitter.on('error', async (error) => {
     console.error('WebSocket encountered an error:', error);
-    // Optionally, implement further error handling or reconnection logic
+    // Additional error handling if necessary
   });
 
   // Periodic check for WebSocket health
   setInterval(() => {
-    if (customWsProvider && customWsProvider._websocket.readyState !== WebSocket.OPEN) {
-      console.log('WebSocket connection is not open. Reinitializing...');
-      customWsProvider.destroy(); // Clean up the existing provider
-      initializeWebSocket(); // Reinitialize the WebSocket connection
+    if (customWsProvider && customWsProvider._websocket.readyState !== WebSocket.OPEN && !customWsProvider.isReconnecting) {
+      console.log('WebSocket connection is not open. Initiating reconnection...');
+      customWsProvider.reconnect();
     }
   }, 90000); // Check every 90 seconds
 }
@@ -1046,6 +1084,7 @@ initializeAndStart();
 process.on('SIGINT', () => {
   console.log('Gracefully shutting down...');
   if (customWsProvider) {
+    customWsProvider.removeAllListeners();
     customWsProvider.destroy();
   }
   // Perform any additional cleanup here
@@ -1055,6 +1094,7 @@ process.on('SIGINT', () => {
 process.on('SIGTERM', () => {
   console.log('Gracefully shutting down...');
   if (customWsProvider) {
+    customWsProvider.removeAllListeners();
     customWsProvider.destroy();
   }
   // Perform any additional cleanup here
