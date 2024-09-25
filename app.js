@@ -238,6 +238,9 @@ let processedTransactions = new Set();
 // Initialize a global WebSocket provider variable to ensure only one instance exists
 let wsProvider = null;
 
+// Flag to prevent multiple event listener attachments
+let listenersAttached = false;
+
 // Utility Functions
 function loadProcessedTransactions() {
   try {
@@ -255,11 +258,46 @@ function loadProcessedTransactions() {
 
 function saveProcessedTransactions() {
   try {
+    // Create a backup
+    if (fs.existsSync(processedTransactionsFilePath)) {
+      fs.copyFileSync(processedTransactionsFilePath, `${processedTransactionsFilePath}.bak`);
+    }
+
+    // Write the new data
     const data = JSON.stringify(Array.from(processedTransactions));
     fs.writeFileSync(processedTransactionsFilePath, data, "utf-8");
     console.log(`Saved ${processedTransactions.size} processed transactions.`);
   } catch (error) {
     console.error("Error saving processed transactions:", error);
+    // Optionally, restore from backup
+    if (fs.existsSync(`${processedTransactionsFilePath}.bak`)) {
+      fs.copyFileSync(`${processedTransactionsFilePath}.bak`, processedTransactionsFilePath);
+      console.log("Restored processed transactions from backup.");
+    }
+  }
+}
+
+const MAX_PROCESSED_TRANSACTIONS = 1000; // Adjust based on expected transaction volume
+
+function markTransactionAsProcessed(txHash) {
+  if (processedTransactions.size >= MAX_PROCESSED_TRANSACTIONS) {
+    // Remove the first inserted item (oldest)
+    const firstTx = processedTransactions.values().next().value;
+    processedTransactions.delete(firstTx);
+    console.log(`Removed oldest transaction: ${firstTx}`);
+  }
+
+  processedTransactions.add(txHash);
+  saveProcessedTransactions();
+}
+
+function resetProcessedTransactions() {
+  processedTransactions.clear();
+  try {
+    fs.writeFileSync(processedTransactionsFilePath, JSON.stringify([]), "utf-8");
+    console.log(`[${new Date().toISOString()}] Reset processed transactions.`);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] Error resetting processed transactions:`, error);
   }
 }
 
@@ -549,16 +587,14 @@ async function handleTransfer(from, to, value, event) {
 
     addToVoidBurnQueue(VOID_BURN_ANIMATION, { caption: burnMessage, parse_mode: "HTML" });
 
-    processedTransactions.add(txHash);
-    saveProcessedTransactions();
+    markTransactionAsProcessed(txHash);
 
     console.log(`Burn detected: ${amountBurned.toFixed(2)} VOID, Total burned: ${voidTotalBurnedAmount.toFixed(2)} VOID`);
   } catch (error) {
     console.error('Error in handleTransfer:', error);
     // Optionally, handle the error further or notify via Telegram
     // Already marked as processed to prevent infinite retries
-    processedTransactions.add(txHash);
-    saveProcessedTransactions();
+    markTransactionAsProcessed(txHash);
   }
 }
 
@@ -571,9 +607,8 @@ async function handleSwapEvent(event) {
     return;
   }
 
-  // **Immediately mark as processed to prevent duplicate handling**
-  processedTransactions.add(txHash);
-  saveProcessedTransactions();
+  // Mark as processed before handling to prevent duplicates
+  markTransactionAsProcessed(txHash);
   console.log(`[${new Date().toISOString()}] Transaction ${txHash} marked as processed.`);
 
   try {
@@ -689,8 +724,6 @@ async function handleSwapEvent(event) {
     console.log('VOID photo message sent successfully.');
 
     console.log(`VOID ${isLikelyArbitrage ? 'Arbitrage' : 'Buy'} detected: ${formattedVoidAmount} VOID ($${transactionValueUSD.toFixed(2)}), From Address: ${fromAddress}, Is Arbitrage: ${isLikelyArbitrage}`);
-
-    // Already marked as processed
   } catch (error) {
     console.error('Error in handleSwapEvent:', error);
 
@@ -701,6 +734,11 @@ async function handleSwapEvent(event) {
 
 // WebSocket Initialization Function
 function initializeWebSocket() {
+  if (listenersAttached) {
+    console.log('Event listeners already attached. Skipping re-attachment.');
+    return;
+  }
+
   // If there's an existing provider, destroy it before creating a new one
   if (wsProvider) {
     wsProvider.removeAllListeners();
@@ -731,6 +769,7 @@ function initializeWebSocket() {
   voidPool.on('Swap', swapHandler);
   voidTokenWS.on('Transfer', transferHandler);
 
+  listenersAttached = true;
   console.log('WebSocket connection established and listening for Swap and Transfer (to burn address) events.');
 
   // Handle provider events for logging purposes
@@ -740,6 +779,7 @@ function initializeWebSocket() {
 
   wsProvider.on('close', (code) => {
     console.error(`WebSocket connection closed with code ${code}. Ethers.js will attempt to reconnect automatically.`);
+    listenersAttached = false; // Allow re-attachment on reconnection
   });
 
   // No need for periodic health checks
@@ -968,6 +1008,9 @@ async function initializeAndStart() {
 
     initializeWebSocket();
 
+    // Schedule the processed transactions reset
+    setInterval(resetProcessedTransactions, 24 * 60 * 60 * 1000); // Every 24 hours
+
     setInterval(async () => {
       const priceInfo = await getVoidPrice();
       if (priceInfo !== null) {
@@ -993,7 +1036,8 @@ process.on('SIGINT', () => {
     wsProvider.removeAllListeners();
     wsProvider.destroy();
   }
-  // Perform any additional cleanup here
+  // Reset processed transactions before shutdown
+  resetProcessedTransactions();
   process.exit();
 });
 
@@ -1003,6 +1047,7 @@ process.on('SIGTERM', () => {
     wsProvider.removeAllListeners();
     wsProvider.destroy();
   }
-  // Perform any additional cleanup here
+  // Reset processed transactions before shutdown
+  resetProcessedTransactions();
   process.exit();
 });
