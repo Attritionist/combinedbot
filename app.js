@@ -6,7 +6,6 @@ const WebSocket = require('ws');
 const EventEmitter = require('events');
 require("dotenv").config();
 
-
 // Environment variables
 const VOID_TELEGRAM_CHAT_ID = process.env.VOID_TELEGRAM_CHAT_ID;
 const VOID_TELEGRAM_BOT_TOKEN = process.env.VOID_TELEGRAM_BOT_TOKEN;
@@ -238,86 +237,8 @@ let isYangSendingMessage = false;
 const processedTransactionsFilePath = "processed_transactions.json";
 let processedTransactions = new Set();
 
-// Custom WebSocket Provider with Reconnection Logic
-class CustomWebSocketProvider extends ethers.providers.WebSocketProvider {
-  constructor(url, network) {
-    super(url, network);
-    this.heartbeatInterval = null;
-    this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 10; // Increased max attempts
-    this.reconnectDelay = 5000; // Initial delay: 5 seconds
-    this.maxReconnectDelay = 60000; // Max delay: 60 seconds
-    this.emitter = new EventEmitter();
-    this.isReconnecting = false;
-    this.setupHeartbeat();
-    this.setupReconnection();
-  }
-
-  setupHeartbeat() {
-    this.heartbeatInterval = setInterval(() => {
-      if (this._websocket.readyState === WebSocket.OPEN) {
-        this._websocket.ping();
-      }
-    }, 30000); // Ping every 30 seconds
-  }
-
-  setupReconnection() {
-    this._websocket.on('close', (code) => {
-      console.error(`WebSocket connection closed with code ${code}.`);
-      this.emitter.emit('close', code);
-      this.reconnect();
-    });
-
-    this._websocket.on('error', (error) => {
-      console.error('WebSocket encountered an error:', error);
-      this.emitter.emit('error', error);
-      // No need to call reconnect here; 'close' event will handle it
-    });
-  }
-
-  async reconnect() {
-    if (this.isReconnecting) return;
-    this.isReconnecting = true;
-
-    while (this.reconnectAttempts < this.maxReconnectAttempts) {
-      const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts), this.maxReconnectDelay);
-      console.log(`Reconnection attempt ${this.reconnectAttempts + 1}/${this.maxReconnectAttempts} in ${delay / 1000} seconds...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      
-      try {
-        this.reconnectAttempts++;
-        await this._websocket.close(); // Ensure the current socket is closed
-        this._websocket = new WebSocket(this.connection.url);
-
-        // Reattach event listeners
-        this.setupHeartbeat();
-        this.setupReconnection();
-
-        // Reset reconnection attempts on successful connection
-        if (this._websocket.readyState === WebSocket.OPEN) {
-          console.log('WebSocket reconnected successfully.');
-          this.reconnectAttempts = 0;
-          this.isReconnecting = false;
-          return;
-        }
-      } catch (error) {
-        console.error(`Reconnection attempt ${this.reconnectAttempts} failed:`, error.message);
-      }
-    }
-
-    console.error('Max reconnection attempts reached. Emitting close event.');
-    this.emitter.emit('close', 'Max reconnection attempts reached.');
-    this.isReconnecting = false;
-  }
-
-  destroy() {
-    clearInterval(this.heartbeatInterval);
-    super.destroy();
-  }
-}
-
 // Initialize a global WebSocket provider variable to ensure only one instance exists
-let customWsProvider = null;
+let wsProvider = null;
 
 // Utility Functions
 function loadProcessedTransactions() {
@@ -614,6 +535,7 @@ async function initializeTotalBurnedAmount() {
   }
 }
 
+
 async function handleTransfer(from, to, value, event) {
   const txHash = event.transactionHash;
   if (processedTransactions.has(txHash)) return;
@@ -749,7 +671,7 @@ async function handleSwapEvent(event) {
     const chartLink = "https://dexscreener.com/base/0x21eCEAf3Bf88EF0797E3927d855CA5bb569a47fc";
 
     const message = `${emojiString}
-${isLikelyArbitrage ? '🤖 Arbitrage Buy' : '💸 Bought'} ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) ${!isLikelyArbitrage ? `(<a href="https://debank.com/profile/${fromAddress}">View Address</a>)` : ''}
+💸 Bought ${Number(formattedVoidAmount).toFixed(2)} VOID ($${transactionValueUSD.toFixed(2)}) ${!isLikelyArbitrage ? `(<a href="https://debank.com/profile/${fromAddress}">View Address</a>)` : ''}
 🟣 VOID Price: $${currentVoidUsdPrice.toFixed(5)}
 💰 Market Cap: $${marketCap.toFixed(0)}
 🔥 Total Burned: ${voidTotalBurnedAmount.toFixed(2)} VOID
@@ -783,17 +705,17 @@ ${isLikelyArbitrage ? '🤖 Arbitrage Buy' : '💸 Bought'} ${Number(formattedVo
 // WebSocket Initialization Function
 function initializeWebSocket() {
   // If there's an existing provider, destroy it before creating a new one
-  if (customWsProvider) {
-    customWsProvider.removeAllListeners(); // Remove all listeners to prevent memory leaks
-    customWsProvider.destroy();
+  if (wsProvider) {
+    wsProvider.removeAllListeners();
+    wsProvider.destroy();
     console.log('Existing WebSocket provider destroyed.');
   }
 
   console.log(`[${new Date().toISOString()}] Initializing new WebSocket provider.`);
-  customWsProvider = new CustomWebSocketProvider(WSS_ENDPOINT);
+  wsProvider = new ethers.providers.WebSocketProvider(WSS_ENDPOINT);
 
-  const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, customWsProvider);
-  const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, customWsProvider);
+  const voidPool = new ethers.Contract(VOID_POOL_ADDRESS, UNISWAP_V3_POOL_ABI, wsProvider);
+  const voidTokenWS = new ethers.Contract(VOID_CONTRACT_ADDRESS, ERC20_ABI, wsProvider);
 
   // Bind event handlers to prevent multiple bindings
   const swapHandler = (sender, recipient, amount0, amount1, sqrtPriceX96, liquidity, tick, event) => {
@@ -814,27 +736,21 @@ function initializeWebSocket() {
 
   console.log('WebSocket connection established and listening for Swap and Transfer (to burn address) events.');
 
-  // Listen for close and error events to handle reconnection
-  customWsProvider.emitter.on('close', async (code) => {
-    if (customWsProvider.reconnectAttempts < customWsProvider.maxReconnectAttempts) {
-      // Reconnection is handled within CustomWebSocketProvider
-      console.log(`WebSocket closed with code ${code}. Reconnection handled internally.`);
-    } else {
-      console.error('Max reconnection attempts reached. Restarting the WebSocket setup.');
-      initializeWebSocket();
-    }
+  // Handle provider events
+  wsProvider._websocket.on('close', (code) => {
+    console.error(`WebSocket connection closed with code ${code}. Reconnecting...`);
+    // ethers.js automatically attempts to reconnect, so no need to manually reinitialize
   });
 
-  customWsProvider.emitter.on('error', async (error) => {
+  wsProvider._websocket.on('error', (error) => {
     console.error('WebSocket encountered an error:', error);
-    // Additional error handling if necessary
+    // ethers.js handles reconnection; additional error handling can be done here if needed
   });
 
   // Periodic check for WebSocket health
   setInterval(() => {
-    if (customWsProvider && customWsProvider._websocket.readyState !== WebSocket.OPEN && !customWsProvider.isReconnecting) {
-      console.log('WebSocket connection is not open. Initiating reconnection...');
-      customWsProvider.reconnect();
+    if (wsProvider && wsProvider._websocket.readyState !== WebSocket.OPEN) {
+      console.log('WebSocket connection is not open. ethers.js should handle reconnection automatically.');
     }
   }, 90000); // Check every 90 seconds
 }
@@ -1083,9 +999,9 @@ initializeAndStart();
 // Graceful Shutdown
 process.on('SIGINT', () => {
   console.log('Gracefully shutting down...');
-  if (customWsProvider) {
-    customWsProvider.removeAllListeners();
-    customWsProvider.destroy();
+  if (wsProvider) {
+    wsProvider.removeAllListeners();
+    wsProvider.destroy();
   }
   // Perform any additional cleanup here
   process.exit();
@@ -1093,9 +1009,9 @@ process.on('SIGINT', () => {
 
 process.on('SIGTERM', () => {
   console.log('Gracefully shutting down...');
-  if (customWsProvider) {
-    customWsProvider.removeAllListeners();
-    customWsProvider.destroy();
+  if (wsProvider) {
+    wsProvider.removeAllListeners();
+    wsProvider.destroy();
   }
   // Perform any additional cleanup here
   process.exit();
