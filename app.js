@@ -882,7 +882,15 @@ async function handleSwapEvent(event) {
       const fluxRank = getFluxRank(totalYangBalance);
 
       const transactionValueUSD = yinAmount * currentYinUsdPrice;
+const minimumYinUsdValue = 50;
 
+// Mark the transaction as processed regardless of its value
+markTransactionAsProcessed(txHash);
+
+if (transactionValueUSD < minimumYinUsdValue) {
+  console.log(`Skipping low-value YIN transaction: $${transactionValueUSD.toFixed(2)}, txHash: ${txHash}`);
+  return;
+}
       const emojiPairCount = Math.min(Math.floor(transactionValueUSD / 100), 48);
       const emojiString = "☯️🌊".repeat(emojiPairCount);
 
