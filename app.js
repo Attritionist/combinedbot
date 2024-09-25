@@ -887,7 +887,7 @@ async function handleSwapEvent(event) {
       const emojiString = "☯️🌊".repeat(emojiPairCount);
 
       const txHashLink = `https://basescan.org/tx/${txHash}`;
-      const chartLink = "https://dexscreener.com/base/0x90fbb03389061020eec7ce9a7435966363410b87";
+      const chartLink = "https://dexscreener.com/base/0xeCb36fF12cbe4710E9Be2411de46E6C180a4807f";
 
       const message = `${emojiString}
 💸 Bought ${yinAmount.toFixed(2)} YIN (${yangEquivalent.toFixed(2)} YANG) ($${transactionValueUSD.toFixed(2)}) (<a href="https://debank.com/profile/${fromAddress}">View Address</a>)
